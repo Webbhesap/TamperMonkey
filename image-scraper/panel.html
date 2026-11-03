@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="tr">
+<head><meta charset="utf-8"><title>Image Scraper panel templates</title></head>
+<body>
+  <template id="isp-launch-template">
+    <div class="launch" role="toolbar" aria-label="Image Scraper">
+      <button class="secondary" type="button" data-isp-action="settings">⚙️ Ayarlar</button>
+      <button type="button" data-isp-action="scan">🖼️ Resimleri Topla</button>
+    </div>
+  </template>
+
+  <!-- Complete settings UI structure lives here; app.js only binds state and actions. -->
+  <template id="isp-settings-navigation-template">
+    <div class="settings-navigation" x-data="{ active: 'general' }">
+      <div class="settings-tabs" role="tablist" aria-label="Ayar kategorileri">
+        <button type="button" role="tab" id="isp-general-tab" aria-controls="isp-general-panel" aria-selected="true" tabindex="0" data-tab-key="general" x-bind:aria-selected="active === 'general'" x-bind:tabindex="active === 'general' ? 0 : -1">⚙️ Genel</button>
+        <button type="button" role="tab" id="isp-scan-tab" aria-controls="isp-scan-panel" aria-selected="false" tabindex="-1" data-tab-key="scan" x-bind:aria-selected="active === 'scan'" x-bind:tabindex="active === 'scan' ? 0 : -1">🔎 Tarama</button>
+        <button type="button" role="tab" id="isp-images-tab" aria-controls="isp-images-panel" aria-selected="false" tabindex="-1" data-tab-key="images" x-bind:aria-selected="active === 'images'" x-bind:tabindex="active === 'images' ? 0 : -1">🖼 Görseller</button>
+        <button type="button" role="tab" id="isp-zip-tab" aria-controls="isp-zip-panel" aria-selected="false" tabindex="-1" data-tab-key="zip" x-bind:aria-selected="active === 'zip'" x-bind:tabindex="active === 'zip' ? 0 : -1">🗜 ZIP ve indirme</button>
+        <button type="button" role="tab" id="isp-excluded-tab" aria-controls="isp-excluded-panel" aria-selected="false" tabindex="-1" data-tab-key="excluded" x-bind:aria-selected="active === 'excluded'" x-bind:tabindex="active === 'excluded' ? 0 : -1">🚫 Hariç tutulan siteler</button>
+        <button type="button" role="tab" id="isp-backup-tab" aria-controls="isp-backup-panel" aria-selected="false" tabindex="-1" data-tab-key="backup" x-bind:aria-selected="active === 'backup'" x-bind:tabindex="active === 'backup' ? 0 : -1">💾 Yedekleme</button>
+        <button type="button" role="tab" id="isp-records-tab" aria-controls="isp-records-panel" aria-selected="false" tabindex="-1" data-tab-key="records" x-bind:aria-selected="active === 'records'" x-bind:tabindex="active === 'records' ? 0 : -1">🗂 Kayıtları yönet</button>
+      </div>
+      <div class="settings-panels">
+        <div role="tabpanel" id="isp-general-panel" aria-labelledby="isp-general-tab" x-show="active === 'general'" x-cloak>
+          <section class="section"><h3>Site profili</h3><div data-control="profile-content"><p class="muted" data-control="profile-active" hidden>Site profili etkin.</p><p class="muted" data-control="profile-inactive" hidden>Genel ayarlar kullanılıyor.</p><button type="button" class="secondary" data-action="profile-remove" hidden>Bu site profilini sil</button></div></section>
+          <section class="section"><h3>Gizlilik <span class="help-tip" tabindex="0" data-tooltip="Betik giriş bilgilerini veya çerezleri kaydetmez, sayfa formu göndermez ve erişim doğrulamasını aşmaz. Oturum ve görsel verileri yalnızca ilgili kayıt ayarlarıyla saklanır." aria-label="Gizlilik hakkında bilgi"></span></h3></section>
+        </div>
+        <div role="tabpanel" id="isp-scan-panel" aria-labelledby="isp-scan-tab" x-show="active === 'scan'" x-cloak>
+          <section class="section"><h3>İçerik taraması</h3>
+            <label><span>İçeriklere devam et <span class="help-tip" tabindex="0" data-tooltip="Açıkken kategori listelerinden içerik bağlantıları toplanır ve içerik sayfaları taranır." aria-label="Derin tarama hakkında bilgi"></span></span><input data-control="deepCrawl" type="checkbox"></label>
+            <label><span>Kategori sayfası sınırı <span class="help-tip" tabindex="0" data-tooltip="Derin taramada kategori/list sayfalarını, kapalıyken normal sayfalama kuyruğunu sınırlar. İlk sayfa dahildir; 0 sınırsızdır." aria-label="Kategori sayfası sınırı hakkında bilgi"></span></span><input data-control="max" type="number" min="0" max="50"></label>
+            <label><span>İçerik başına sayfa <span class="help-tip" tabindex="0" data-tooltip="İlk içerik sayfası da sayılır. 1 yalnızca ilk sayfa; 0 sonuna kadar." aria-label="İçerik başına sayfa hakkında bilgi"></span></span><input data-control="articleMaxPages" type="number" min="0" max="10000"></label>
+            <label><span>İçerik sayısı <span class="help-tip" tabindex="0" data-tooltip="Kategori listelerinden açılacak farklı içerik bağlantısı sayısı. 0 sınırsız." aria-label="İçerik sayısı hakkında bilgi"></span></span><input data-control="maxArticles" type="number" min="0" max="100000"></label>
+            <label><span>Sayfalama biçimi <span class="help-tip" tabindex="0" data-tooltip="Derin taramada kategori/list sayfaları, normal taramada mevcut sayfa kuyruğu için kullanılır. İçerik alt sayfaları kendi seçicisini veya otomatik bulmayı kullanır." aria-label="Sayfalama biçimi hakkında bilgi"></span></span><select data-control="pageMode" aria-label="Sayfalama yöntemi"><option value="auto">Otomatik</option><option value="html-slash">.html/2</option><option value="query-page">?page=2</option><option value="page-path">/page/2</option><option value="slash-page">/2</option><option value="dash-html">-2.html</option><option value="underscore-html">_2.html</option><option value="custom">Özel şablon</option></select></label>
+            <label class="column"><span>Özel URL şablonu <span class="help-tip" tabindex="0" data-tooltip="Özel sayfalama biçiminde {url} mevcut adres, {n} sonraki sayfa numarasıdır." aria-label="URL şablonu hakkında bilgi"></span></span><input data-control="customTpl" placeholder="{url}/{n}"></label>
+            <label><span>Aynı içerik tekrarlanırsa dur</span><input data-control="duplicatePages" type="checkbox"></label>
+            <label><span>Taramadan önce sayfaları seç <span class="help-tip" tabindex="0" data-tooltip="HTML sayfalarını önceden alır; görselleri henüz indirmez." aria-label="Sayfa önizlemesi hakkında bilgi"></span></span><input data-control="previewPages" type="checkbox"></label>
+            <label><span>Yarım kalan taramayı kaydet <span class="help-tip" tabindex="0" data-tooltip="URL ve ilerleme bilgisi Tampermonkey deposunda tutulur." aria-label="Tarama ilerlemesi hakkında bilgi"></span></span><input data-control="saveScanProgress" type="checkbox"></label>
+            <label class="column"><span>Liste sonraki sayfa seçicisi <span class="help-tip" tabindex="0" data-tooltip="Boş bırakılırsa otomatik bulur. Derin taramada kategori/list sayfalarında kullanılır." aria-label="Liste seçicisi hakkında bilgi"></span></span><input data-control="nextSelector"></label>
+            <label class="column"><span>İçerik bağlantısı seçicisi <span class="help-tip" tabindex="0" data-tooltip="Boş bırakılırsa içerik bağlantılarını otomatik bulur. Kart yapısına göre CSS seçicisi ekleyebilirsin." aria-label="İçerik bağlantısı seçicisi hakkında bilgi"></span></span><input data-control="articleLinkSelector" placeholder="article a[href]"></label>
+            <label class="column"><span>Konu başlığı seçicisi <span class="help-tip" tabindex="0" data-tooltip="İçerik sayfasındaki başlığı bulur. Varsayılan: h1." aria-label="Başlık seçicisi hakkında bilgi"></span></span><input data-control="articleTitleSelector" placeholder="h1"></label>
+            <label class="column"><span>İçerik sonraki sayfa seçicisi <span class="help-tip" tabindex="0" data-tooltip="Boş bırakılırsa içerik alt sayfalarını otomatik bulur." aria-label="İçerik sayfalaması hakkında bilgi"></span></span><input data-control="articleNextSelector"></label>
+          </section>
+          <section class="section"><h3>Görsel boyutu ve dinamik içerik</h3>
+            <label><span>Min. genişlik (0 = filtre yok)</span><input data-control="minw" type="number" min="0" max="100000"></label>
+            <label><span>Min. yükseklik (0 = filtre yok)</span><input data-control="minh" type="number" min="0" max="100000"></label>
+            <label><span>Gerçek boyutu ölç</span><input data-control="real" type="checkbox"></label>
+            <label><span>Boyutu bilinmeyenleri hariç tut</span><input data-control="unknown" type="checkbox"></label>
+            <label><span>Dinamik içerik için sayfayı kaydır</span><input data-control="dynamic" type="checkbox"></label>
+            <label><span>Kaydırma adımı <span class="help-tip" tabindex="0" data-tooltip="Kaydırma yalnızca üstteki kutu açıksa çalışır. 0 yeni içerik bitene kadar; pozitif sayı belirttiğin adım sayısıdır. 30 adım sınırı yoktur." aria-label="Dinamik kaydırma adımı hakkında bilgi"></span></span><input data-control="steps" type="number" min="0"></label>
+            <label><span>Zaman aşımı (ms)</span><input data-control="timeout" type="number" min="1000" max="120000"></label>
+            <p class="muted">Boyutu ölçülemeyen görseller elenmez; sonuçlarda ? × ? görünür.</p>
+          </section>
+        </div>
+        <div role="tabpanel" id="isp-images-panel" aria-labelledby="isp-images-tab" x-show="active === 'images'" x-cloak>
+          <section class="section"><h3>Görsel seçimi ve URL</h3>
+            <label><span>Görsel CSS seçicisi <span class="help-tip" tabindex="0" data-tooltip="Açıkken yalnızca bu seçiciyle eşleşen alanlardaki görseller alınır." aria-label="Görsel seçicisi hakkında bilgi"></span></span><input data-control="useSel" type="checkbox"></label>
+            <label class="column"><span>CSS seçici</span><input data-control="selector"></label>
+            <label class="column"><span>Atlama regex’i <span class="help-tip" tabindex="0" data-tooltip="Eşleşen görsel URL’leri atlanır. Boş bırakılırsa filtre uygulanmaz." aria-label="Atlama regex'i hakkında bilgi"></span></span><input data-control="skip"></label>
+            <label><span>URL Decode <span class="help-tip" tabindex="0" data-tooltip="Yalnızca ekranda ve kopyalamada görüntülenen URL’yi çözer; indirme adresi korunur." aria-label="URL Decode hakkında bilgi"></span></span><input data-control="decode" type="checkbox"></label>
+            <label><span>URL değiştirme kuralları <span class="help-tip" tabindex="0" data-tooltip="Kurallar indirme öncesi URL’yi değiştirir; imzalı bağlantıları bozabilir." aria-label="URL kuralları hakkında bilgi"></span></span><input data-control="useRep" type="checkbox"></label>
+            <label class="column"><span>Kurallar (JSON)</span><textarea data-control="replacements" rows="4"></textarea></label>
+            <label><span>Görsel kaynağı <span class="help-tip" tabindex="0" data-tooltip="Yalnızca sonuçlara alınacak kaynak alan adlarını filtreler; erişim engelini aşmaz." aria-label="Görsel kaynağı hakkında bilgi"></span></span><select data-control="sourceMode" aria-label="Görsel kaynak alanı filtresi"><option value="any">Tüm kaynaklar</option><option value="same-host">Sayfanın alan adı</option><option value="selected-hosts">Seçili alan adları</option></select></label>
+            <label class="column"><span>Seçili alan adları</span><textarea data-control="sourceHosts" rows="3" placeholder="example.com"></textarea></label>
+          </section>
+        </div>
+        <div role="tabpanel" id="isp-zip-panel" aria-labelledby="isp-zip-tab" x-show="active === 'zip'" x-cloak>
+          <section class="section"><h3>ZIP ve indirme <span class="help-tip" tabindex="0" data-tooltip="İndirmeler tarayıcı belleğinde hazırlanır. Çok büyük arşivlerde parça sınırlarını düşür veya klasöre akış yazmayı etkinleştir." aria-label="ZIP hakkında bilgi"></span></h3>
+            <label><span>403/404’te Referer ile yeniden dene <span class="help-tip" tabindex="0" data-tooltip="Kaynak sayfa veya görsel alan adı Referer olarak denenir; tarayıcı bu başlığı değiştirebilir." aria-label="Referer hakkında bilgi"></span></span><input data-control="retryReferer" type="checkbox"></label>
+            <label class="column"><span>ZIP dosya adı</span><input data-control="filename"></label>
+            <label><span>Paralel indirme (1–10) <span class="help-tip" tabindex="0" data-tooltip="İndirme eşzamanlılığıdır; bellek baskısında otomatik düşürülebilir." aria-label="Paralel indirme hakkında bilgi"></span></span><input data-control="concurrent" type="number" min="1" max="10"></label>
+            <label><span>Parça başına dosya sınırı</span><input data-control="maxFiles" type="number" min="1" max="10000"></label>
+            <label><span>Parça başına MB sınırı</span><input data-control="maxMB" type="number" min="1" max="2000"></label>
+            <label><span>Aynı dosya içeriğini ZIP’ten çıkar <span class="help-tip" tabindex="0" data-tooltip="SHA-256 ile bayt bayt aynı içerikleri tespit eder; URL tekrarı ve görsel benzerliğinden ayrıdır." aria-label="SHA-256 tekilleştirme hakkında bilgi"></span></span><input data-control="dedupe" type="checkbox"></label>
+            <label><span>Benzer görselleri grupla <span class="help-tip" tabindex="0" data-tooltip="Algısal benzerlik raporlanır; görseller otomatik silinmez veya ZIP’ten çıkarılmaz." aria-label="Benzer görseller hakkında bilgi"></span></span><input data-control="visualGroups" type="checkbox"></label>
+            <label><span>ZIP’i seçilen klasöre akışla yaz <span class="help-tip" tabindex="0" data-tooltip="Destekleyen Chromium tarayıcılarında klasör seçtirir. Görsel verileri işlem bitene kadar bellekte kalır." aria-label="ZIP akışı hakkında bilgi"></span></span><input data-control="streamZip" type="checkbox"></label>
+            <label class="column"><span>Dosya adı şablonu <span class="help-tip" tabindex="0" data-tooltip="Değişkenler: {sira}, {sayfa}, {orijinal_ad}, {boyut}." aria-label="Dosya adı şablonu hakkında bilgi"></span></span><input data-control="template"></label>
+          </section>
+        </div>
+        <div role="tabpanel" id="isp-excluded-panel" aria-labelledby="isp-excluded-tab" x-show="active === 'excluded'" x-cloak>
+          <section class="section"><h3>Hariç tutulan siteler <span class="help-tip" tabindex="0" data-tooltip="Eklenen alan adı ve alt alan adlarında yenileme sonrası panel ve tarama çalışmaz. Listeyi hariç olmayan bir sitede yönet." aria-label="Hariç tutulan siteler hakkında bilgi"></span></h3>
+            <div class="actions"><input data-control="excludedInput" type="text" aria-label="Hariç tutulacak site alan adı" placeholder="example.com veya https://example.com"><button type="button" class="secondary" data-action="excluded-add">Siteyi ekle</button><button type="button" class="secondary" data-action="excluded-current">Bu siteyi ekle</button></div>
+            <p class="muted" role="status" data-control="excludedStatus"></p><div data-control="excludedList"></div>
+          </section>
+        </div>
+        <div role="tabpanel" id="isp-backup-panel" aria-labelledby="isp-backup-tab" x-show="active === 'backup'" x-cloak>
+          <section class="section"><h3>Ayar yedeği <span class="help-tip" tabindex="0" data-tooltip="Yedek; genel ayarları, site profillerini ve hariç tutma listesini içerir. Oturum ve görsel verileri eklenmez." aria-label="Ayar yedeği hakkında bilgi"></span></h3>
+            <div class="actions"><button type="button" class="secondary" data-action="backup-export">⬇️ Ayarları dışa aktar</button><button type="button" class="secondary" data-action="backup-import">⬆️ Yedeği içe aktar</button></div>
+            <input data-control="backupFile" type="file" accept="application/json,.json" hidden aria-label="Ayar yedeği JSON dosyası"><p class="muted" role="status" data-control="backupStatus"></p>
+          </section>
+        </div>
+        <div role="tabpanel" id="isp-records-panel" aria-labelledby="isp-records-tab" x-show="active === 'records'" x-cloak></div>
+      </div>
+      <div class="settings-footer">
+        <p class="error" role="alert" data-control="settingsError"></p>
+        <div class="actions"><button type="button" class="secondary" data-action="settings-reset">↺ Varsayılanlara dön</button><button type="button" class="secondary" data-action="settings-site-save">🌐 Bu siteye kaydet</button><button type="button" class="primary" data-action="settings-save">💾 Kaydet</button></div>
+      </div>
+    </div>
+  </template>
+
+  <template id="isp-excluded-site-row-template"><div class="actions"><span class="muted" data-site-name></span><button type="button" class="danger" data-action="remove-site">Kaldır</button></div></template>
+  <template id="isp-dialog-template">
+    <div class="overlay"><div class="dialog" role="dialog" aria-modal="true">
+      <div class="header"><div class="identity"><div class="brandmark" aria-hidden="true">◇</div><div class="dialog-titles"><div class="eyebrow">IMAGE SCRAPER / WORKSPACE</div><h2 data-dialog-title></h2><div class="subtitle" data-dialog-subtitle hidden></div></div></div><button class="close" type="button" aria-label="Kapat" data-isp-action="close">×</button></div>
+    </div></div>
+  </template>
+
+  <template id="isp-section-template"><section class="section"><h3 data-section-title></h3></section></template>
+  <template id="isp-element-a"><a></a></template><template id="isp-element-button"><button type="button"></button></template>
+  <template id="isp-element-details"><details></details></template><template id="isp-element-div"><div></div></template>
+  <template id="isp-element-h3"><h3></h3></template><template id="isp-element-img"><img></template>
+  <template id="isp-element-input"><input type="text"></template><template id="isp-element-label"><label></label></template>
+  <template id="isp-element-link"><link rel="stylesheet"></template><template id="isp-element-option"><option></option></template>
+  <template id="isp-element-p"><p></p></template><template id="isp-element-pre"><pre></pre></template>
+  <template id="isp-element-progress"><progress></progress></template><template id="isp-element-section"><section></section></template>
+  <template id="isp-element-select"><select></select></template><template id="isp-element-small"><small></small></template>
+  <template id="isp-element-span"><span></span></template><template id="isp-element-strong"><strong></strong></template>
+  <template id="isp-element-summary"><summary></summary></template><template id="isp-element-textarea"><textarea></textarea></template>
+</body>
+</html>
