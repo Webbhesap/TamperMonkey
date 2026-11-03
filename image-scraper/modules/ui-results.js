@@ -247,6 +247,8 @@
         reverse: storedPrefs.reverse === true,
         previews: storedPrefs.previews !== false,
         fit: storedPrefs.fit === 'cover' ? 'cover' : 'contain',
+        // Galeri gruplaması: kaynak sayfaya (img.page) veya içeriğe (articleUrl) göre.
+        groupBy: ['page', 'article'].includes(storedPrefs.groupBy) ? storedPrefs.groupBy : 'none',
       };
       const saveViewPrefs = () => { try { GM_setValue(VIEW_PREFS_KEY, JSON.stringify(viewPrefs)); } catch (error) { console.warn('[Image Scraper] Görünüm tercihleri kaydedilemedi', error); } };
       const filterDrawerHeader = $el('div', { class:'filter-drawer-header' });
@@ -373,6 +375,12 @@
       for (const [value, name] of [['contain','Tamamı görünsün (sığdır)'],['cover','Kartı doldur (kırp)']]) fitSelect.appendChild($el('option', { value }, name));
       fitSelect.value = viewPrefs.fit;
       viewSection.appendChild(drawerField('Küçük resim görünümü', fitSelect, true));
+      // Galeri gruplaması: kaynak sayfa ya da içerik başlıkları altında topla.
+      // Grup kartları hem bölüm başlığı hem de "bu grubu ZIP yap" düğmesi taşır.
+      const groupBySelect = $el('select', { 'aria-label': 'Galeri gruplaması' });
+      for (const [value, name] of [['none', 'Gruplama yok'], ['page', 'Kaynak sayfaya göre'], ['article', 'İçeriğe (konuya) göre']]) groupBySelect.appendChild($el('option', { value }, name));
+      groupBySelect.value = viewPrefs.groupBy;
+      viewSection.appendChild(drawerField('Galeri gruplaması', groupBySelect));
       const onlySelectedToggle = $el('input', { type: 'checkbox', checked: viewPrefs.onlySelected });
       viewSection.appendChild(drawerToggle('Yalnız seçili görselleri göster', onlySelectedToggle, 'Seçimi kaldırılan görseller galeriden çıkar'));
       const previews = $el('input', { type: 'checkbox', checked: viewPrefs.previews });
@@ -476,6 +484,7 @@
       downloadPane.appendChild($el('h3', {}, 'Seçili görselleri indir'));
       downloadPane.appendChild($el('p', { class: 'muted tab-hint' }, 'Galeride seçtiğin tüm görseller ZIP arşivine eklenir. Hatalı olanlar raporlanır; birden fazla parça oluşursa her birini ayrı indir.'));
       const zipPlanStatus = $el('p', { class: 'muted', role: 'status' }); downloadPane.appendChild(zipPlanStatus);
+      const zipScopeStatus = $el('p', { class: 'muted zip-scope-status', role: 'status' }); downloadPane.appendChild(zipScopeStatus);
       const resourceStatus = $el('p', { class: 'muted resource-status', role: 'status' }); downloadPane.appendChild(resourceStatus);
       const zipActions = $el('div', { class: 'actions' }); zipActions.append(zip, cancel); downloadPane.appendChild(zipActions);
       const progress = $el('progress', { class: 'bar', max: 100, value: 0, hidden: true }); downloadPane.appendChild(progress);
@@ -645,6 +654,17 @@
         }
         return '';
       };
+      // Grup ZIP: galeride bir kaynak sayfa/içerik grubunun tamamını, o anki
+      // seçimden bağımsız olarak arşive verir. Kapsam tek kullanımlıktır.
+      let zipOverride = null;
+      const runGroupZip = (group, label) => {
+        if (zipController) { status.textContent = '⏳ ZIP zaten sürüyor; bitince tekrar dene.'; return; }
+        if (!group?.items?.length) return;
+        zipOverride = { images: [...group.items], label: `${label} (${group.items.length} görsel)` };
+        zipScopeStatus.textContent = `📦 Grup ZIP hazır: ${zipOverride.label}`;
+        activateTab(2);
+        zip.onclick();
+      };
       const VIRTUAL_CARD_HEIGHT = 320, VIRTUAL_OVERSCAN_ROWS = 2;
       let galleryRenderPending = false, cachedFilteredList = null, cachedSelectionList = null;
       // ---------------------------------------------------------------------
@@ -720,7 +740,29 @@
         const captionsMode = viewPrefs.captions ? 'on' : 'off';
         if (grid.dataset.captions !== captionsMode) grid.dataset.captions = captionsMode;
         if (grid.dataset.fit !== viewPrefs.fit) grid.dataset.fit = viewPrefs.fit;
-        const rowPitch = VIRTUAL_CARD_HEIGHT + columnGap, totalRows = Math.ceil(list.length / columns);
+        // Gruplama açıkken satır planı "grup kartı + o grubun görselleri"
+        // biçimindedir. Grup kartı ızgaranın ilk sütunundan başlar; böylece
+        // bölüm başlığı her zaman yeni satırda görünür ve tüm kartlar aynı
+        // yükseklikte kaldığı için sanallaştırma hesabı basit kalır.
+        const groupMode = viewPrefs.groupBy === 'page' || viewPrefs.groupBy === 'article' ? viewPrefs.groupBy : 'none';
+        let rowPlan = null;
+        if (groupMode !== 'none') {
+          rowPlan = [];
+          const grouped = new Map();
+          for (const img of list) {
+            const key = (groupMode === 'article' ? img.articleUrl : img.page) || '';
+            if (!grouped.has(key)) grouped.set(key, { key, items: [] });
+            grouped.get(key).items.push(img);
+          }
+          for (const group of grouped.values()) {
+            const head = group.items.slice(0, Math.max(0, columns - 1));
+            const rest = group.items.slice(head.length);
+            rowPlan.push({ group, items: head });
+            while (rest.length) rowPlan.push({ items: rest.splice(0, columns) });
+          }
+        }
+        const rowPitch = VIRTUAL_CARD_HEIGHT + columnGap;
+        const totalRows = rowPlan ? rowPlan.length : Math.ceil(list.length / columns);
         const firstRow = Math.min(totalRows, Math.floor(savedScrollTop / rowPitch));
         const visibleRows = Math.max(1, Math.ceil(((Number(grid.clientHeight) || 480) + columnGap) / rowPitch));
         const startRow = Math.max(0, firstRow - VIRTUAL_OVERSCAN_ROWS);
@@ -733,7 +775,7 @@
           grid.appendChild(spacer);
         };
         grid.replaceChildren(); addVirtualSpacer(startRow);
-        for (const img of list.slice(startIndex, endIndex)) {
+        const cardNode = img => {
           const card = $el('div', { class: 'image-card' });
           const check = $el('input', { type: 'checkbox', checked: img.selected, 'aria-label': `Görseli seç: ${safeBaseName(img.url)}` });
           check.onchange = () => { img.selected = check.checked; cachedSelectionList = selection(); selectedMetric.textContent = String(cachedSelectionList.length); zip.disabled = !!zipController || !cachedSelectionList.length; text.value = cachedSelectionList.map(i => displayUrl(i.url, c)).join('\n'); scheduleSave(); };
@@ -751,12 +793,46 @@
           meta.append($el('strong', { title: img.url }, safeBaseName(img.url)), $el('div', {}, `${img.width || '?'} × ${img.height || '?'} gerçek${img.displayWidth || img.displayHeight ? ` · HTML ${img.displayWidth || '?'} × ${img.displayHeight || '?'}` : ''} · ${kind(img).toUpperCase()}`), $el('div', {}, `${img.bytes ? formatBytes(img.bytes) + ' · ' : ''}${img.status || 'bekliyor'}`));
           if (img.topic) meta.appendChild($el('div', { class:'muted' }, `Konu: ${img.topic}`));
           if (img.articleUrl) meta.appendChild(linkOrText({ href:img.articleUrl, target:'_blank', rel:'noopener noreferrer', title:img.articleUrl }, 'Ana içerik sayfası'));
-          card.appendChild(meta); grid.appendChild(card);
-        }
+          card.appendChild(meta);
+          return card;
+        };
+        const groupCardNode = group => {
+          const card = $el('div', { class: 'gallery-group-card', 'data-group': group.key, 'data-mode': groupMode });
+          card.style.gridColumnStart = '1';
+          const isArticle = groupMode === 'article';
+          const label = isArticle
+            ? (group.items.find(item => item.topic)?.topic || shortAddress(group.key) || 'Konu bilgisi yok')
+            : (shortAddress(group.key) || 'Sayfa bilgisi yok');
+          const selectedInGroup = group.items.filter(item => item.selected).length;
+          card.append(
+            $el('span', { class: 'group-card-kind' }, isArticle ? 'İÇERİK' : 'KAYNAK SAYFA'),
+            $el('strong', { class: 'group-card-title', title: group.key || label }, label),
+            $el('span', { class: 'group-card-count' }, `${group.items.length} görsel · ${selectedInGroup} seçili`),
+          );
+          const groupActions = $el('div', { class: 'group-card-actions' });
+          const selectGroup = $el('button', { type: 'button', class: 'secondary' }, 'Grubu seç');
+          selectGroup.onclick = () => { for (const img of group.items) img.selected = true; render(true); scheduleSave(); };
+          const zipGroup = $el('button', { type: 'button' }, '🗜️ Grubu ZIP yap');
+          zipGroup.onclick = () => runGroupZip(group, label);
+          groupActions.append(selectGroup, zipGroup);
+          card.appendChild(groupActions);
+          if (group.key) card.appendChild(linkOrText({ class: 'group-card-link', href: group.key, target: '_blank', rel: 'noopener noreferrer' }, 'Bağlantıyı aç'));
+          return card;
+        };
+        if (rowPlan) {
+          for (const row of rowPlan.slice(startRow, endRow)) {
+            if (row.group) grid.appendChild(groupCardNode(row.group));
+            for (const img of row.items) grid.appendChild(cardNode(img));
+          }
+        } else for (const img of list.slice(startIndex, endIndex)) grid.appendChild(cardNode(img));
         addVirtualSpacer(Math.max(0, totalRows - endRow));
         grid.scrollTop = savedScrollTop;
         gridNote.hidden = false;
-        gridNote.textContent = `${list.length} eşleşme · ${endIndex - startIndex} kart etkin DOM penceresinde; tüm sonuçlar sanallaştırılmış galeride kaydırılabilir.`;
+        const renderedCards = rowPlan
+          ? rowPlan.slice(startRow, endRow).reduce((sum, row) => sum + row.items.length, 0)
+          : endIndex - startIndex;
+        gridNote.textContent = `${list.length} eşleşme · ${renderedCards} kart etkin DOM penceresinde; tüm sonuçlar sanallaştırılmış galeride kaydırılabilir.`
+          + (rowPlan ? ` Gruplama: ${groupMode === 'article' ? 'içerik' : 'kaynak sayfa'} (${(rowPlan.filter(row => row.group)).length} grup).` : '');
         if (refreshData) syncDrawerSummary();
       }
       let galleryClosed = false;
@@ -1109,6 +1185,7 @@
       fitSelect.addEventListener('input', () => { viewPrefs.fit = fitSelect.value === 'cover' ? 'cover' : 'contain'; saveViewPrefs(); render(); });
       onlySelectedToggle.addEventListener('input', () => { viewPrefs.onlySelected = onlySelectedToggle.checked; saveViewPrefs(); refreshGallery(); });
       previews.addEventListener('input', () => { viewPrefs.previews = previews.checked; saveViewPrefs(); render(); });
+      groupBySelect.addEventListener('input', () => { viewPrefs.groupBy = ['page', 'article'].includes(groupBySelect.value) ? groupBySelect.value : 'none'; saveViewPrefs(); grid.scrollTop = 0; render(); });
       resetFilters.onclick = () => {
         for (const control of [query, minW, minH, minMB, maxMB]) control.value = '';
         format.value = ''; order.value = 'page'; ratio.value = ''; known.value = 'include';
@@ -1116,6 +1193,7 @@
         bulkPage.value = ''; bulkHost.value = ''; bulkFormat.value = ''; bulkCount.textContent = '';
         viewPrefs.reverse = false; reverseToggle.checked = false;
         viewPrefs.onlySelected = false; onlySelectedToggle.checked = false;
+        viewPrefs.groupBy = 'none'; groupBySelect.value = 'none';
         saveViewPrefs(); grid.scrollTop = 0; render();
       };
       applyAndClose.onclick = closeDrawer;
@@ -1215,7 +1293,10 @@
 
       zip.onclick = async () => {
         if (zipController) return;
-        const selected = selection(); if (!selected.length) return;
+        const override = zipOverride; zipOverride = null;
+        const selected = override ? [...override.images] : selection(); if (!selected.length) return;
+        if (!override) zipScopeStatus.textContent = '';
+        else zipScopeStatus.textContent = `📦 Grup ZIP: ${override.label}`;
         const limitProblem = limitPrecheck(selected);
         if (limitProblem) {
           setStage('ready'); stopStallWatch();
@@ -1376,6 +1457,8 @@
                 kaynak: location.origin,
                 kaynak_sayfa: location.href,
                 parca: parts.length > 1 ? `${parts.indexOf(partFiles) + 1}/${parts.length}` : null,
+                kapsam: override ? 'grup' : 'secim',
+                grup: override ? override.label : null,
                 ayarlar: {
                   ad_sablonu: c.NAME_TEMPLATE || DEFAULTS.NAME_TEMPLATE,
                   klasorleme: c.ZIP_FOLDERS || 'none',
