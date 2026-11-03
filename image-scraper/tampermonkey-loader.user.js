@@ -4,17 +4,17 @@
 // @version      0.3.5
 // @description  Image Scraper arayüzünü yerel file:// HTML/CSS/JS dosyalarından yükleyen deneysel loader.
 // @match        *://*/*
-// @require      file:///C:/Users/Weltall/Downloads/Alternatif/lib/alpine.min.js
-// @require      file:///C:/Users/Weltall/Downloads/Alternatif/lib/jszip.min.js
-// @require      file:///C:/Users/Weltall/Downloads/Alternatif/modules/zip.js
-// @require      file:///C:/Users/Weltall/Downloads/Alternatif/modules/settings-ui.js
-// @require      file:///C:/Users/Weltall/Downloads/Alternatif/modules/page-tools.js
-// @require      file:///C:/Users/Weltall/Downloads/Alternatif/modules/network.js
-// @require      file:///C:/Users/Weltall/Downloads/Alternatif/modules/image-analysis.js
-// @require      file:///C:/Users/Weltall/Downloads/Alternatif/modules/ui-results.js
-// @require      file:///C:/Users/Weltall/Downloads/Alternatif/app.js
-// @resource     appHtml file:///C:/Users/Weltall/Downloads/Alternatif/panel.html
-// @resource     appCss file:///C:/Users/Weltall/Downloads/Alternatif/styles.css
+// @require      file:///C:/Users/Xxx/Downloads/Alternatif/lib/alpine.min.js
+// @require      file:///C:/Users/Xxx/Downloads/Alternatif/lib/jszip.min.js
+// @require      file:///C:/Users/Xxx/Downloads/Alternatif/modules/zip.js
+// @require      file:///C:/Users/Xxx/Downloads/Alternatif/modules/settings-ui.js
+// @require      file:///C:/Users/Xxx/Downloads/Alternatif/modules/page-tools.js
+// @require      file:///C:/Users/Xxx/Downloads/Alternatif/modules/network.js
+// @require      file:///C:/Users/Xxx/Downloads/Alternatif/modules/image-analysis.js
+// @require      file:///C:/Users/Xxx/Downloads/Alternatif/modules/ui-results.js
+// @require      file:///C:/Users/Xxx/Downloads/Alternatif/app.js
+// @resource     appHtml file:///C:/Users/Xxx/Downloads/Alternatif/panel.html
+// @resource     appCss file:///C:/Users/Xxx/Downloads/Alternatif/styles.css
 // @grant        GM_getResourceText
 // @grant        GM_getResourceURL
 // @grant        GM_getValue
