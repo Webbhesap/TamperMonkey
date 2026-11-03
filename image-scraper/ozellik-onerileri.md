@@ -81,8 +81,6 @@ Böylece burada kalan her madde gerçekten "yapılacak iş" listesidir.
 - **Kalıcı favoriler ve koleksiyonlar:** Görselleri oturumlar arasında
   favorile veya adlandırılmış koleksiyonlara ekle; depolama ve gizlilik
   etkisini açıkça göster.
-- **Dosya adı şablonu önizlemesi:** Örnek URL/sayfa/ölçüyle şablonun üreteceği
-  adı kaydetmeden önce göster; geçersiz karakterleri ve çakışmaları belirt.
 - **İsteğe bağlı format dönüştürme:** Seçili görselleri ZIP'e eklemeden önce
   JPEG/PNG/WebP'ye dönüştürme ve kalite ayarı; orijinalleri koruma seçeneği;
   dönüşüm tarayıcıda yerel yapılsın.

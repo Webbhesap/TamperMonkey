@@ -54,6 +54,12 @@ eklenir. Amaç: hangi işin bittiğini tek bakışta görmek.
   yeniden denemede yalnızca onlar indirilir, başarılılar önbellekten gelir.
   Tüm arşivi yeniden indirmek büyük oturumlarda dakikalar sürüyordu.
 
+- **Dosya adı şablonu önizlemesi:** Şablonun üreteceği ad, kaydetmeden önce
+  örnek veriyle gösterilir (`{sira}` = 001, `{sayfa}` = 1, `{orijinal_ad}` =
+  ornek-gorsel, `{boyut}` = 1200x800). Uyarılan durumlar: bilinmeyen
+  değişken, geçersiz karakter, Windows ayrılmış adı (CON/PRN/…) ve
+  `{orijinal_ad}` yokluğu (ad çakışması riski). Renk kodu: ok = yeşil,
+  warn = amber. Adlandırma kuralları `zip.js` ile aynıdır.
 - **ZIP bütünlük kontrolü (isteğe bağlı):** Arşiv üretildikten sonra dosya
   sayısı ve ZIP merkezi dizini (EOCD) doğrulanır; bozuksa "başarılı" mesajı
   verilmez, açık hata çıkar. Bellek maliyeti nedeniyle varsayılan **kapalı**
@@ -62,7 +68,7 @@ eklenir. Amaç: hangi işin bittiğini tek bakışta görmek.
 
 ### Doğrulama
 Gerçek Chromium'da ölçüldü; sonuçlar regresyon testlerine bağlandı.
-- Statik 36/36 · Loader 56/56 · Tarayıcı 137/137 · ESLint temiz.
+- Statik 36/36 · Loader 56/56 · Tarayıcı 147/147 · ESLint temiz.
 - Takılma senaryosu (görsel `fetch` hiç çözülmez): 23 sn'de
   "⬇️ İndirme adımı 23 sn'dir ilerlemiyor…" + yeniden dene düğmesi.
 - Sekme satırı sayısı: 1280/1024/820/480px → hepsi **1 satır**.

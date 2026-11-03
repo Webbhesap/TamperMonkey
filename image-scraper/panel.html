@@ -84,6 +84,7 @@
             <label><span>Benzer görselleri grupla <span class="help-tip" tabindex="0" data-tooltip="Algısal benzerlik raporlanır; görseller otomatik silinmez veya ZIP’ten çıkarılmaz." aria-label="Benzer görseller hakkında bilgi"></span></span><input data-control="visualGroups" type="checkbox"></label>
             <label><span>ZIP’i seçilen klasöre akışla yaz <span class="help-tip" tabindex="0" data-tooltip="Destekleyen Chromium tarayıcılarında klasör seçtirir. Görsel verileri işlem bitene kadar bellekte kalır." aria-label="ZIP akışı hakkında bilgi"></span></span><input data-control="streamZip" type="checkbox"></label>
             <label class="column"><span>Dosya adı şablonu <span class="help-tip" tabindex="0" data-tooltip="Değişkenler: {sira}, {sayfa}, {orijinal_ad}, {boyut}." aria-label="Dosya adı şablonu hakkında bilgi"></span></span><input data-control="template"></label>
+            <p class="template-preview muted" data-control="templatePreview" role="status" aria-live="polite"></p>
           </section>
         </div>
         <div role="tabpanel" id="isp-excluded-panel" aria-labelledby="isp-excluded-tab" x-show="active === 'excluded'" x-cloak>

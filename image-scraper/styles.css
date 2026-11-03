@@ -315,3 +315,14 @@ details{border:1px solid #384157;background:#1a2130;border-radius:10px;padding:1
 .zip-stall button{flex:0 0 auto;font-size:var(--isp-fs-small);padding:7px 11px;min-height:32px;
   background:#2f3a4f;border-color:#47546e;color:#dfe6f4}
 @media (prefers-reduced-motion:reduce){.zip-stage.is-active::before{animation:none}}
+
+/* --- Dosya adı şablonu önizlemesi ------------------------------------------
+   Kullanıcı şablonun üreteceği adı kaydetmeden önce görür; geçersiz
+   karakterler ve ad çakışmaları burada uyarılır. */
+.template-preview{margin:2px 0 0;padding:9px 11px;border:1px solid var(--isp-line);
+  border-radius:var(--isp-radius-sm);background:var(--isp-surface-0);
+  font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:var(--isp-fs-small);
+  line-height:1.55;overflow-wrap:anywhere;white-space:pre-wrap}
+.template-preview[hidden]{display:none}
+.template-preview[data-state=warn]{border-color:#6b5432;background:#221d15;color:#ffd9a3}
+.template-preview[data-state=ok]{border-color:#2f6b56;background:#173027;color:var(--isp-good)}

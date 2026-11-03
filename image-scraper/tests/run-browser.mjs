@@ -61,6 +61,49 @@ async function runScan(page, { expectResults = true, timeout = 60000 } = {}) {
 }
 
 // ---------------------------------------------------------------------------
+// Dosya adı şablonu önizlemesi: kaydetmeden önce örnek çıktı, geçersiz
+// karakterler, bilinmeyen değişkenler ve çakışma riski gösterilmeli.
+if (only('Şablon önizleme')) {
+  t.test('Dosya adı şablonu önizlemesi: örnek, uyarı ve temizleme');
+  const page = await openApp('/basic/');
+  await page.evaluate(() => document.getElementById('__image_scraper_v4__').shadowRoot.querySelector('.launch [data-isp-action="settings"]').click());
+  await page.waitForFunction(() => [...document.getElementById('__image_scraper_v4__').shadowRoot.querySelectorAll('.overlay h2')].some(n => n.textContent === 'Ayarlar'));
+  await new Promise(resolve => setTimeout(resolve, 400));
+  await page.evaluate(() => document.getElementById('__image_scraper_v4__').shadowRoot.querySelector('[data-tab-key="zip"]').click());
+  await new Promise(resolve => setTimeout(resolve, 250));
+
+  const preview = tpl => page.evaluate(value => {
+    const root = document.getElementById('__image_scraper_v4__').shadowRoot;
+    const input = root.querySelector('[data-control="template"]');
+    input.value = value; input.dispatchEvent(new Event('input', { bubbles: true }));
+    const node = root.querySelector('[data-control="templatePreview"]');
+    return { state: node.dataset.state || '', text: node.textContent || '', hidden: node.hidden };
+  }, tpl);
+
+  const good = await preview('{sira}_{orijinal_ad}');
+  t.equal(good.state, 'ok', 'Geçerli şablon uyarı verdi: ' + good.text);
+  t.includes(good.text, '001_ornek-gorsel.png', 'Örnek çıktı beklenen biçimde değil');
+  t.ok(!good.hidden, 'Önizleme gizli');
+
+  const unknown = await preview('{bilinmeyen}_{sira}_{orijinal_ad}');
+  t.equal(unknown.state, 'warn', 'Bilinmeyen değişken uyarı vermedi');
+  t.includes(unknown.text, 'bilinmeyen değişken', 'Bilinmeyen değişken mesajı yok');
+
+  const unsafeName = await preview('a/b:c*{orijinal_ad}');
+  t.equal(unsafeName.state, 'warn', 'Geçersiz karakter uyarısı yok');
+  t.includes(unsafeName.text, 'a_b_c_ornek-gorsel.png', 'Geçersiz karakter temizlenmedi: ' + unsafeName.text);
+
+  const collision = await preview('{sayfa}-{boyut}');
+  t.equal(collision.state, 'warn', 'Çakışma riski uyarısı yok');
+
+  const reserved = await preview('CON');
+  t.includes(reserved.text, 'ayrılmış', 'Windows ayrılmış adı uyarısı yok');
+
+  t.equal(page.__pageErrors.length, 0, 'Şablon önizlemesinde sayfa hatası: ' + page.__pageErrors[0]);
+  await page.close();
+}
+
+// ---------------------------------------------------------------------------
 if (only('UI kurulumu')) {
   t.test('UI kurulumu: shadow root, başlat düğmeleri, CSS');
   const page = await openApp();

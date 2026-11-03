@@ -139,6 +139,35 @@
       const decode = q('decode'), useRep = q('useRep'), replacements = q('replacements'), sourceMode = q('sourceMode'), sourceHosts = q('sourceHosts');
       const retryReferer = q('retryReferer'), filename = q('filename'), concurrent = q('concurrent'), maxFiles = q('maxFiles'), maxMB = q('maxMB');
       const dedupe = q('dedupe'), visualGroups = q('visualGroups'), streamZip = q('streamZip'), verifyZip = q('verifyZip'), template = q('template');
+      // Dosya adı şablonu önizlemesi: kaydetmeden önce örnek çıktıyı göster,
+      // geçersiz karakterleri ve bilinmeyen değişkenleri uyar.
+      const templatePreview = q('templatePreview');
+      const renderTemplatePreview = () => {
+        const raw = template.value.trim() || DEFAULTS.NAME_TEMPLATE;
+        const allowed = new Set(['sira', 'sayfa', 'orijinal_ad', 'boyut']);
+        const unknown = [...raw.matchAll(/\{([^}]+)\}/g)].map(m => m[1]).filter(k => !allowed.has(k));
+        const sample = { sira: '001', sayfa: '1', orijinal_ad: 'ornek-gorsel', boyut: '1200x800' };
+        // Betikteki ad üretimiyle aynı kurallar (zip.js safeBaseName/zipEntryName).
+        const produced = raw.replace(/\{(sira|sayfa|orijinal_ad|boyut)\}/g, (_, k) => sample[k]);
+        const unsafe = /[\\/<>:"|?*\x00-\x1f\x7f]/.test(produced);
+        const cleaned = produced.replace(/[\\/<>:"|?*\x00-\x1f\x7f]/g, '_').replace(/^\.+|[. ]+$/g, '').slice(0, 150) || 'image';
+        const reserved = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i.test(cleaned);
+        const problems = [];
+        if (unknown.length) problems.push(`bilinmeyen değişken: ${[...new Set(unknown)].join(', ')} (yok sayılır)`);
+        if (unsafe) problems.push('ad içinde geçersiz karakter var, "_" ile değiştirilir');
+        if (reserved) problems.push('Windows ayrılmış adı, başına "_" eklenir');
+        if (!/\{orijinal_ad\}/.test(raw)) problems.push('{orijinal_ad} yok: farklı görseller aynı adı alabilir, çakışma "_2" ile çözülür');
+        if (!problems.length) {
+          templatePreview.dataset.state = 'ok';
+          templatePreview.textContent = `Örnek: ${cleaned}.png`;
+        } else {
+          templatePreview.dataset.state = 'warn';
+          templatePreview.textContent = `Örnek: ${cleaned}.png\n⚠ ${problems.join(' · ')}`;
+        }
+        templatePreview.hidden = false;
+      };
+      template.addEventListener('input', renderTemplatePreview);
+      renderTemplatePreview();
       const deepCrawl = q('deepCrawl'), articleLinkSelector = q('articleLinkSelector'), articleTitleSelector = q('articleTitleSelector');
       const articleNextSelector = q('articleNextSelector'), articleMaxPages = q('articleMaxPages'), maxArticles = q('maxArticles');
       const deepOnlyControls = [articleLinkSelector, articleTitleSelector, articleNextSelector, articleMaxPages, maxArticles];
