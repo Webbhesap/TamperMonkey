@@ -4,7 +4,7 @@
   modules.createResultsUI = function createResultsUI(deps) {
     const { $el, dialog, section, ui, readJSON, deleteKey, DEFAULTS, SESSION_KEY, CACHE_KEY, CACHE_CAP, GM_getValue, GM_setValue,
       formatBytes, etaSeconds, formatEta, encodeData, decodeData, adaptivePool, copyText, displayUrl, buildDiagnosticSummary,
-      safeBaseName, zipName, zipEntryName, createUniqueZipFile, saveBlob, generateZipToWritable, generateZipBlob,
+      safeBaseName, zipName, zipEntryName, createUniqueZipFile, saveBlob, generateZipToWritable, generateZipBlob, verifyZipBytes,
       downloadImageRetry, imageFormat, perceptualHash, hashDistance, smartFitMode, checkAbort, isAbort, location, document, window,
       URL, Blob, AbortController, TextEncoder, crypto } = deps;
     if (typeof smartFitMode !== 'function') throw new Error('Slayt gösterisi akıllı sığdırma işlevi bağlanamadı.');
@@ -829,6 +829,7 @@
         ['analysis', '🧩 Benzerlik analizi'],
         ['dedupe', '🔍 Tekilleştirme'],
         ['archive', '🗜️ Arşiv oluşturma'],
+        ['verify', '🔎 Doğrulama'],
         ['ready', '✅ Hazır'],
       ];
       const stageBar = $el('div', { class: 'zip-stages', role: 'group', 'aria-label': 'ZIP aşamaları' });
@@ -842,7 +843,7 @@
       stallBox.append(stallText, retryFailedButton, retryZipButton);
       progress.after(stallBox); progress.after(stageBar);
 
-      let activeStage = null, lastProgressAt = 0, stallTimer = null, failedItems = [];
+      let activeStage = null, lastProgressAt = 0, stallTimer = null, failedItems = [], zipVerification = '';
       const STALL_MS = 20000;
       const setStage = key => {
         activeStage = key;
@@ -892,7 +893,7 @@
         const selected = selection(); if (!selected.length) return;
         zipController = new AbortController(); const signal = zipController.signal;
         zip.disabled = true; cancel.hidden = false; progress.hidden = false; progress.value = 0;
-        failedItems = []; retryFailedButton.hidden = true; retryZipButton.hidden = true;
+        failedItems = []; zipVerification = ''; retryFailedButton.hidden = true; retryZipButton.hidden = true;
         setStage('download'); startStallWatch();
         let same = 0, gm = 0, cached = 0, failed = 0, bytesTotal = 0;
         const errors = [], verificationUrls = new Map();
@@ -1022,7 +1023,18 @@
               manual.appendChild($el('p', { class: 'muted' }, `✅ Klasöre yazıldı: ${name} · ${formatBytes(archiveBytes)}`));
             } else {
               const blob = await generateZipBlob(parts[p], signal, reportZipProgress);
-              checkAbort(signal); const url = URL.createObjectURL(blob); objectUrls.push(url);
+              checkAbort(signal);
+              // Bütünlük kontrolü (isteğe bağlı): bozuk arşivi "başarılı" diye
+              // sunmak yerine açık hata ver. Bellek maliyeti nedeniyle kapalı
+              // varsayılandadır; açıksa baytlar bir kez okunur.
+              if (c.VERIFY_ZIP) {
+                setStage('verify'); touchProgress(); status.textContent = '🔎 Arşiv bütünlüğü doğrulanıyor…';
+                const bytes = new Uint8Array(await blob.arrayBuffer());
+                const verdict = verifyZipBytes(bytes, parts[p].length);
+                if (!verdict.ok) throw new Error('ZIP doğrulaması başarısız: ' + verdict.problems.join(' '));
+                zipVerification = `${verdict.entries} dosya · ${(verdict.byteLength / 1048576).toFixed(1)} MB doğrulandı`;
+              }
+              const url = URL.createObjectURL(blob); objectUrls.push(url);
               const link = $el('a', { class: 'download-link', href: url, download: proposedName }, `⬇ ${proposedName} (${formatBytes(blob.size)})`);
               manual.appendChild(link); manual.appendChild($el('span', {}, ' '));
               if (parts.length === 1) link.click();
@@ -1031,7 +1043,7 @@
           }
           progress.value = 100; render(); scheduleSave();
           setStage('ready'); stopStallWatch(); retryZipButton.hidden = true; retryFailedButton.hidden = failedItems.length === 0;
-          status.textContent = `✅ ${parts.length} ZIP ${streamingDirectory ? 'seçilen klasöre akışla yazıldı' : 'hazır'} · ${same + gm + cached} indirildi · ${failed} hata. ${streamingDirectory ? 'ZIP arşivinin ek kopyası bellekte oluşturulmadı; görsel verileri bellekte tutulur.' : parts.length > 1 ? 'Her parçayı aşağıdan ayrı indirin.' : 'İndirme başlamazsa bağlantıya tıklayın.'}`;
+          status.textContent = `✅ ${parts.length} ZIP ${streamingDirectory ? 'seçilen klasöre akışla yazıldı' : 'hazır'} · ${same + gm + cached} indirildi · ${failed} hata${zipVerification ? ` · ${zipVerification}` : ''}. ${streamingDirectory ? 'ZIP arşivinin ek kopyası bellekte oluşturulmadı; görsel verileri bellekte tutulur.' : parts.length > 1 ? 'Her parçayı aşağıdan ayrı indirin.' : 'İndirme başlamazsa bağlantıya tıklayın.'}`;
         } catch (e) {
           stopStallWatch();
           status.textContent = isAbort(e) ? '⏹️ ZIP işlemi iptal edildi.' : '❌ ' + e.message;

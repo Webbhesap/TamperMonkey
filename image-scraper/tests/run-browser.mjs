@@ -640,7 +640,7 @@ if (only('ZIP aşamaları')) {
     const root = document.getElementById('__image_scraper_v4__').shadowRoot;
     return [...root.querySelectorAll('.zip-stage')].map(n => n.dataset.stage);
   });
-  t.equal(stageLabels.join(','), 'download,analysis,dedupe,archive,ready', 'ZIP aşama rozetleri eksik');
+  t.equal(stageLabels.join(','), 'download,analysis,dedupe,archive,verify,ready', 'ZIP aşama rozetleri eksik');
   await page.evaluate(() => document.getElementById('__image_scraper_v4__').shadowRoot.querySelector('.result-pane [class="primary"]').click());
   await page.waitForFunction(() => {
     const root = document.getElementById('__image_scraper_v4__').shadowRoot;
@@ -719,6 +719,69 @@ if (only('ZIP aşamaları')) {
   t.ok(stalled.retryVisible, 'Takılma anında "yeniden dene" düğmesi yok');
   t.equal(stallPage.__pageErrors.length, 0, 'Takılma senaryosunda sayfa hatası: ' + stallPage.__pageErrors[0]);
   await stallPage.close();
+}
+
+// ---------------------------------------------------------------------------
+// ZIP bütünlük kontrolü: "başarılı" mesajı verip bozuk dosya sunmayı önler.
+// Doğrulayıcı, gerçek/kesik/çöp arşivleri ayırt etmeli.
+if (only('ZIP bütünlük')) {
+  t.test('ZIP bütünlük kontrolü: geçerli/kesik/çöp arşiv ayrımı');
+  const page = await openApp('/basic/');
+  const verdicts = await page.evaluate(async () => {
+    const mod = globalThis.ImageScraperModules.createZipModule({
+      $el: () => ({}), document: window.document, URL: window.URL, Blob: window.Blob,
+      Uint8Array: window.Uint8Array, checkAbort: () => {}, abortError: () => new Error('abort'),
+    });
+    const payload = [{ name: 'a.png', data: new Uint8Array([1, 2, 3, 4]) }, { name: 'b.png', data: new Uint8Array([5, 6, 7, 8]) }];
+    const blob = await mod.generateZipBlob(payload, new AbortController().signal);
+    const bytes = new Uint8Array(await blob.arrayBuffer());
+    return {
+      valid: mod.verifyZipBytes(bytes, 2),
+      wrongCount: mod.verifyZipBytes(bytes, 5),
+      truncated: mod.verifyZipBytes(bytes.slice(0, Math.floor(bytes.length / 2)), 2),
+      garbage: mod.verifyZipBytes(new Uint8Array(100).fill(7), 2),
+      tooSmall: mod.verifyZipBytes(new Uint8Array(5), 1),
+    };
+  });
+  t.ok(verdicts.valid.ok, 'Geçerli arşiv doğrulamadan geçmedi: ' + verdicts.valid.problems.join(' '));
+  t.equal(verdicts.valid.entries, 2, 'Geçerli arşivde dosya sayısı yanlış okundu');
+  t.ok(!verdicts.wrongCount.ok, 'Yanlış dosya sayısı yakalanmadı');
+  t.includes(verdicts.wrongCount.problems.join(' '), 'uyuşmuyor', 'Dosya sayısı uyuşmazlığı mesajı yok');
+  t.ok(!verdicts.truncated.ok, 'Kesik arşiv yakalanmadı');
+  t.includes(verdicts.truncated.problems.join(' '), 'EOCD', 'Kesik arşiv mesajı EOCD demiyor');
+  t.ok(!verdicts.garbage.ok, 'Çöp veri geçerli sayıldı');
+  t.ok(!verdicts.tooSmall.ok, 'Çok küçük veri geçerli sayıldı');
+  t.equal(page.__pageErrors.length, 0, 'Doğrulamada sayfa hatası: ' + page.__pageErrors[0]);
+  await page.close();
+
+  // Uçtan uca: VERIFY_ZIP açıkken doğrulama aşaması çalışmalı ve sonuç yazılmalı.
+  const vPage = await openApp('/basic/');
+  await setStorage(vPage, { isp_config: JSON.stringify({ MIN_WIDTH: 0, MIN_HEIGHT: 0, ZIP_FILENAME: 'verify.zip', VERIFY_ZIP: true }) });
+  await runScan(vPage);
+  await vPage.evaluate(() => {
+    const root = document.getElementById('__image_scraper_v4__').shadowRoot;
+    [...root.querySelectorAll('.result-tabs button')].find(b => b.textContent === 'ZIP ve indirme').click();
+  });
+  await new Promise(resolve => setTimeout(resolve, 250));
+  await vPage.evaluate(() => document.getElementById('__image_scraper_v4__').shadowRoot.querySelector('.result-pane [class="primary"]').click());
+  await vPage.waitForFunction(() => {
+    const root = document.getElementById('__image_scraper_v4__').shadowRoot;
+    return !!root.querySelector('a.download-link') || (root.querySelector('.result-pane .status')?.textContent || '').startsWith('❌');
+  }, { timeout: 90000, polling: 100 });
+  const verified = await vPage.evaluate(() => {
+    const root = document.getElementById('__image_scraper_v4__').shadowRoot;
+    return {
+      status: root.querySelector('.result-pane .status')?.textContent || '',
+      hasVerifyStage: !!root.querySelector('.zip-stage[data-stage="verify"]'),
+      link: root.querySelector('a.download-link')?.download || '',
+    };
+  });
+  t.ok(verified.hasVerifyStage, 'Doğrulama aşaması rozeti yok');
+  t.includes(verified.status, 'doğrulandı', 'Başarı mesajında doğrulama bilgisi yok: ' + verified.status);
+  t.ok(!verified.status.startsWith('❌'), 'Doğrulama açıkken ZIP başarısız: ' + verified.status);
+  t.ok(verified.link.length > 0, 'Doğrulama açıkken indirme bağlantısı yok');
+  t.equal(vPage.__pageErrors.length, 0, 'Doğrulama senaryosunda sayfa hatası: ' + vPage.__pageErrors[0]);
+  await vPage.close();
 }
 
 // ---------------------------------------------------------------------------

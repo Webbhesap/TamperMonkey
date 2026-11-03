@@ -1,64 +1,91 @@
-# Image Scraper — geliştirme ve yeni özellik önerileri
+# Image Scraper — henüz uygulanmamış özellik önerileri
 
-**Kapsam:** Bu dosyada henüz uygulanmamış, değerlendirmeye açık fikirler bulunur. Tamamlanan özellikler `tamamlanmis-ozellikler.md` dosyasındadır. Öneriler mevcut ayarları ve özellikleri tekrar etmemek için gözden geçirilmiştir.
+**Bu dosyada yalnızca HENÜZ YAPILMAMIŞ fikirler bulunur.**
+Tamamlanan özellikler ayrı dosyadadır: [`tamamlanmis-ozellikler.md`](tamamlanmis-ozellikler.md).
 
-## Geliştirilebilir Özellikler
+Kural: bir madde uygulandığında bu dosyadan **çıkarılır** ve
+`tamamlanmis-ozellikler.md` içine tarih + nasıl yapıldığı bilgisiyle eklenir.
+Böylece burada kalan her madde gerçekten "yapılacak iş" listesidir.
 
-- **Kategori ve içerik sayfalarının sınırlarını daha görünür kıl:** Kategori sayfası sayısını, bulunan farklı içerik bağlantılarını ve her içerikte gezilen alt sayfaları ayrı sayaçlarla göster; URL’lerdeki `/page/2` gibi içerik sayfalarının yeni makale sayılmadığını denetle.
-- **Derin tarama için güvenli devam kaydı:** Kategori keşfi, içerik kuyruğu ve her makalenin alt sayfa konumunu ayrı kaydet; kesinti sonrası tamamlanan içeriği yeniden taramadan sıradaki içerikten devam ettir.
-- **Otomatik içerik bağlantısı bulmayı iyileştir:** Bağlantıları içerik kartları/başlıkları içinden önceliklendir, sayfalama ve navigasyon alanlarını dışla; bulunan aday sayısı ve seçilen seçiciyi önizlemede açıkça göster.
-- **Makale sayfalandırmasında içerik sınırı:** Sonraki sayfanın aynı makaleye ait olduğunu doğrula; kategori, başka makale, etiket veya “tüm sayfalar” bağlantısına sapmayı engelle. İçerik başına sınır dolunca yalnız o makalenin kuyruğunu durdur.
-
-- **ZIP işleminin durumunu ve takılmayı görünür kıl — yüksek öncelik:** İndirme, tekilleştirme, arşiv üretimi ve indirme bağlantısının hazırlanmasını ayrı aşamalar olarak göster. Uzun işlemde gerçek ilerleme/son etkinlik bilgisini sun; üretim ilerlemezse kullanıcıya iptal ve yeniden deneme yolu göster. ZIP çıktısının neden beklediğini anlamayı kolaylaştırır.
-- **ZIP çıktısı için isteğe bağlı bütünlük kontrolü — yüksek öncelik:** Arşiv tamamlandığında dosya sayısı/boyut ve ZIP başlıklarını kontrol et; doğrulama başarısızsa başarılı indirme mesajı verme. Büyük arşivlerde ek bellek maliyeti olabileceğinden varsayılanı kapalı tut.
-- **Yalnızca başarısız görselleri yeniden dene — orta öncelik:** Başarılı görselleri bellekteki/önbellekteki kopyalarından kullanıp hatalıları tekrar indir. Hata türüne göre sınırlı tekrar, `Retry-After`, sunucu başına bekleme ve iptal desteğini koru.
-- **Oturum başına kullanıcı ayarlı toplam kaynak sınırı — orta öncelik:** Mevcut adaptif eşzamanlılığa ek olarak toplam indirilen bayt veya görsel adedi için isteğe bağlı üst sınır belirle; sınıra yaklaşınca uyar ve durdurma/seçerek devam seçenekleri sun.
-- **Tarayıcı ve Tampermonkey uyumluluk matrisi — yüksek öncelik:** File System Access, Fullscreen, `createImageBitmap`, GM istekleri ve yerel `@require` davranışını Chromium/Firefox ve desteklenen Tampermonkey sürümlerinde ayrı ayrı test edip destek durumunu göster.
-- **Arayüz erişilebilirlik kontrolü — orta öncelik:** Sekmeler, galeride seçim, slayt gösterisi ve modal için odak halkası, ekran okuyucu metni, klavye dolaşımı ve yüksek kontrastı düzenli doğrula.
-- **Büyük oturumlarda arayüz performans ölçümü — orta öncelik:** Sanallaştırılmış galeri, sonuç güncelleme ve oturum kaydetme işlemlerini binlerce görselde ölç; uzun ana iş parçacığı görevlerini azalt ve ölçümleri regresyon testine bağla.
-- **Tampermonkey modüllerinin bağımlılık sözleşmeleri — orta öncelik:** Modüllerin beklediği işlevleri başlangıçta doğrula; eksik bağlamı geç bir kullanıcı etkileşiminde `ReferenceError` olarak değil, hangi modül/bağımlılığın eksik olduğunu belirten erken bir hata olarak bildir.
-
-## Yeni Özellikler
-
-- **Hiyerarşik kategori → içerik → sayfa önizlemesi:** Taramadan önce bulunan kategori sayfalarını, her kategorideki makaleleri ve makale alt sayfalarını ağaç görünümünde listele; makale veya tek tek sayfa seçimi, toplu seçim ve içerik başına sayfa sınırı sun.
-- **Konu bazlı tarama ve koleksiyon:** İçerik başlığını otomatik konu olarak kullanıp konu başına görsel sayısını göster; kullanıcı seçtiği konuları tara, dışarıda bırak veya ayrı koleksiyon/ZIP olarak dışa aktarabilsin.
-- **İçerik kartı seçici yardımcısı:** Sayfadaki olası makale kartlarını işaretleyerek göster; kullanıcı örnek bir kart/başlık seçsin ve betik önerilen CSS seçicisini oluştursun.
-- **Makale tarama özeti:** Her içerik için ana URL, konu başlığı, taranan alt sayfa adedi, benzersiz görsel ve atlanan tekrar sayılarını tek raporda sun; başarısız makaleleri tek tek yeniden dene.
-
-- **Benzer görselleri ZIP öncesi gözden geçirme:** Algısal benzerlik gruplarını yan yana göster; kullanıcı grup içinden tutulacak görselleri seçebilsin. Otomatik silme varsayılan olmasın.
-- **ZIP’e kaynak manifesti ekleme:** Kullanıcı isterse arşive `manifest.json` koy; dosya adı, kaynak URL, kaynak sayfa, ölçüler ve varsa içerik hash’ini listele. URL’lerde hassas/imzalı parametre bulunabileceğini açıkça uyar.
-- **ZIP içi klasörleme:** Dosyaları tek klasörde toplamak yerine kaynak sayfaya, alan adına veya kullanıcının ad şablonuna göre klasörle. Güvenli ve çakışmasız dosya adlandırmasını koru.
-- **Kaynak sayfaya göre hızlı filtre ve seçim:** Görselleri tarandıkları sayfaya göre grupla; tek bir sayfanın görsellerini seç, dışarıda bırak veya ayrı ZIP yap.
-- **Yan yana görsel karşılaştırıcı:** İki görseli eş zamanlı yakınlaştırma ve kaydırmayla karşılaştır; özellikle benzer görsel gruplarındaki en iyi kopyayı seçmeye yardımcı olur.
-- **Kaydedilebilir iş akışı profilleri:** Site profillerinden ayrı olarak genel “hızlı tarama”, “düşük bellek” veya “yüksek çözünürlük” gibi adlandırılmış ayar kombinasyonları oluşturup tek tıkla uygula.
-- **Kalıcı favoriler ve koleksiyonlar:** Kullanıcı görselleri oturumlar arasında favorileyebilsin veya adlandırılmış koleksiyonlara ekleyebilsin; depolama ve gizlilik etkisi açıkça gösterilsin.
-- **Dosya adı şablonu önizlemesi:** Örnek URL/sayfa/ölçüyle şablonun üreteceği adı kaydetmeden önce göster; geçersiz karakterleri, tekrar eden adları ve olası çakışmaları belirt.
-- **İsteğe bağlı format dönüştürme:** Desteklenen tarayıcılarda seçilen görselleri ZIP’e eklemeden önce JPEG/PNG/WebP biçimine dönüştürme ve kalite ayarı sun. Orijinal dosyaları koruma seçeneği bulunsun; dönüşüm tarayıcıda yerel yapılsın.
-- **Toplu seçim kısayolları:** Aralık seçimi, yalnızca mevcut sayfa, alan adı veya dosya türüne göre tümünü seç/kaldır gibi işlemler ekle; işlem öncesi etkilenecek görsel sayısını bildir.
+> Son gözden geçirme: 2026-11-03. Mevcut ayarlar ve özellikler taranarak
+> tekrar eden maddeler çıkarıldı.
 
 ---
 
-## 2026-11 bakım turunda tamamlananlar (öneri değil, kayıt)
+## Yüksek öncelik
 
-Aşağıdaki maddeler bu depoda yapılan hata düzeltme/iyileştirme turunda karşılandı;
-yukarıdaki listeden çıkarılabilir veya "tamamlandı" olarak işaretlenebilir:
+- **Tarayıcı ve Tampermonkey uyumluluk matrisi:** File System Access,
+  Fullscreen, `createImageBitmap`, GM istekleri ve `@require` önbellek
+  davranışını Chromium/Firefox × Tampermonkey/Violentmonkey için ayrı ayrı
+  test edip destek durumunu arayüzde göster. *(Chromium tarafı otomatik
+  testlerle kapsanıyor; Firefox canlı doğrulaması hâlâ yok.)*
 
-- **Tarayıcı ve Tampermonkey uyumluluk matrisi:** Loader `@connect` izni
-  `raw.githubusercontent.com` ile sınırlandı, `@resource` yedeği eklendi, geliştirme
-  loader'ı (önbelleksiz) eklendi. Chrome + Tampermonkey/Violentmonkey için gerçek
-  Chromium'da otomatik testler var. **Firefox tarafı bu ortamda çalıştırılamadı**;
-  kod yalnızca standart API'ler (`fetch`, `AbortController`, `Blob`, `CSS.supports`
-  gerektirmeyen özellikler) kullanır ve `createImageBitmap`/`showDirectoryPicker`
-  yokluğunda zarifçe geri düşer, ancak canlı Firefox doğrulaması yapılmadı.
-- **Arayüz erişilebilirlik kontrolü (kısmi):** Diyaloglarda `role="dialog"`,
-  `aria-modal`, odak tuzağı ve Escape ile kapatma; sekmelerde ok tuşu gezinmesi;
-  galeri kartlarında `aria-label`; ikon düğmelerde metin etiketi doğrulandı.
-  Otomatik erişilebilirlik ağacı/ekran okuyucu testi hâlâ yok.
-- **Büyük oturumlarda arayüz performans ölçümü (kısmi):** 5.200 görselli sayfa için
-  tarayıcı testi eklendi (tarama süresi ve galeri sanallaştırması regresyon olarak
-  izleniyor). Tekrar kaydı için O(n²) dizi araması ölçüldü ve **fark yaratmadığı**
-  için kod basit bırakıldı.
-- **Modül bağımlılık sözleşmeleri (kısmi):** Her modül fabrikası `app.js` içinde
-  `typeof ... !== 'function'` kontrolüyle doğrulanıyor ve anlaşılır hata veriyor.
-  Modül içindeki tek tek bağımlılıkların (örn. eksik `saveBlob`) önceden doğrulanması
-  hâlâ yapılmıyor.
+## Orta öncelik
+
+- **Oturum başına toplam kaynak sınırı:** Mevcut adaptif eşzamanlılığa ek
+  olarak toplam indirilen bayt veya görsel adedi için isteğe bağlı üst sınır;
+  sınıra yaklaşınca uyar ve "durdur / seçerek devam et" sun.
+- **Kategori ve içerik sayfalarının sınırlarını görünür kıl:** Kategori sayfa
+  sayısını, bulunan farklı içerik bağlantılarını ve her içerikte gezilen alt
+  sayfaları ayrı sayaçlarla göster; `/page/2` gibi sayfaların yeni makale
+  sayılmadığını denetle.
+- **Derin tarama için güvenli devam kaydı:** Kategori keşfi, içerik kuyruğu ve
+  her makalenin alt sayfa konumunu ayrı kaydet; kesinti sonrası tamamlanan
+  içeriği yeniden taramadan sıradaki içerikten devam et.
+- **Otomatik içerik bağlantısı bulmayı iyileştir:** Bağlantıları içerik
+  kartları/başlıkları içinden önceliklendir, sayfalama ve navigasyonu dışla;
+  bulunan aday sayısını ve seçilen seçiciyi önizlemede göster.
+- **Makale sayfalandırmasında içerik sınırı:** Sonraki sayfanın aynı makaleye
+  ait olduğunu doğrula; kategori/etiket/"tüm sayfalar" sapmasını engelle.
+- **Arayüz erişilebilirlik kontrolü:** Odak halkası, ekran okuyucu metni,
+  klavye dolaşımı ve yüksek karşıtlığı düzenli doğrula. *(Temel altyapı var:
+  `role="dialog"`, `aria-modal`, odak tuzağı, ok tuşu gezinmesi, `aria-live`,
+  `prefers-reduced-motion`, `prefers-contrast`. Otomatik erişilebilirlik
+  ağacı/ekran okuyucu testi hâlâ yok.)*
+- **Büyük oturumlarda arayüz performans ölçümü:** Sanallaştırılmış galeri,
+  sonuç güncelleme ve oturum kaydetmeyi binlerce görselde ölç; uzun ana iş
+  parçacığı görevlerini azalt ve ölçümleri regresyon testine bağla.
+  *(5.200 görsel için tarama süresi ve sanallaştırma regresyon testi var.)*
+- **Modül bağımlılık sözleşmeleri:** Fabrika çağrıları doğrulanıyor, ancak
+  modül içindeki tek tek bağımlılıkların (ör. eksik `saveBlob`) önceden
+  doğrulanması yapılmıyor; eksik bağımlılık geç bir `ReferenceError` yerine
+  başlangıçta anlaşılır hata vermeli.
+
+## Yeni özellikler
+
+- **Hiyerarşik kategori → içerik → sayfa önizlemesi:** Taramadan önce
+  kategorileri, makaleleri ve alt sayfaları ağaç görünümünde listele;
+  makale/sayfa seçimi ve içerik başına sayfa sınırı sun.
+- **Konu bazlı tarama ve koleksiyon:** İçerik başlığını konu kabul edip konu
+  başına görsel sayısını göster; seçilen konuları ayrı koleksiyon/ZIP yap.
+- **İçerik kartı seçici yardımcısı:** Sayfadaki olası makale kartlarını
+  işaretle; kullanıcı bir örnek seçsin, betik CSS seçicisini üretsin.
+- **Makale tarama özeti:** İçerik başına URL, başlık, taranan alt sayfa,
+  benzersiz görsel ve atlanan tekrar sayılarını tek raporda sun; başarısız
+  makaleleri tek tek yeniden dene.
+- **Benzer görselleri ZIP öncesi gözden geçirme:** Algısal benzerlik
+  gruplarını yan yana göster, kullanıcı tutulacakları seçsin. Otomatik silme
+  varsayılan olmasın.
+- **ZIP'e kaynak manifesti ekleme:** İsteğe bağlı `manifest.json`; dosya adı,
+  kaynak URL, kaynak sayfa, ölçüler ve varsa içerik hash'i. URL'lerde
+  hassas/imzalı parametre olabileceğini açıkça uyar.
+- **ZIP içi klasörleme:** Dosyaları kaynak sayfaya, alan adına veya ad
+  şablonuna göre klasörle; güvenli ve çakışmasız adlandırmayı koru.
+- **Kaynak sayfaya göre hızlı filtre ve seçim:** Görselleri tarandıkları
+  sayfaya göre grupla; tek sayfanın görsellerini seç, dışla veya ayrı ZIP yap.
+- **Yan yana görsel karşılaştırıcı:** İki görseli eş zamanlı yakınlaştırma ve
+  kaydırmayla karşılaştır; benzer gruplarda en iyi kopyayı seçmeye yardımcı olur.
+- **Kaydedilebilir iş akışı profilleri:** Site profillerinden ayrı olarak
+  "hızlı tarama", "düşük bellek", "yüksek çözünürlük" gibi adlandırılmış ayar
+  kombinasyonları oluşturup tek tıkla uygula.
+- **Kalıcı favoriler ve koleksiyonlar:** Görselleri oturumlar arasında
+  favorile veya adlandırılmış koleksiyonlara ekle; depolama ve gizlilik
+  etkisini açıkça göster.
+- **Dosya adı şablonu önizlemesi:** Örnek URL/sayfa/ölçüyle şablonun üreteceği
+  adı kaydetmeden önce göster; geçersiz karakterleri ve çakışmaları belirt.
+- **İsteğe bağlı format dönüştürme:** Seçili görselleri ZIP'e eklemeden önce
+  JPEG/PNG/WebP'ye dönüştürme ve kalite ayarı; orijinalleri koruma seçeneği;
+  dönüşüm tarayıcıda yerel yapılsın.
+- **Toplu seçim kısayolları:** Aralık seçimi, "yalnızca bu sayfa", alan adı
+  veya dosya türüne göre tümünü seç/kaldır; işlem öncesi etkilenecek sayıyı
+  bildir.

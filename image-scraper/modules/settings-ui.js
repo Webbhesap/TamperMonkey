@@ -123,7 +123,7 @@
         useSel: c.USE_SELECTOR, selector: c.SELECTOR, skip: c.SKIP_PATTERNS, decode: c.DECODE_URL, useRep: c.USE_REPLACE,
         replacements: JSON.stringify(c.REPLACEMENTS, null, 2), sourceMode: c.IMAGE_SOURCE_MODE, sourceHosts: c.IMAGE_SOURCE_HOSTS,
       retryReferer: c.RETRY_REFERER, filename: c.ZIP_FILENAME, concurrent: c.ZIP_CONCURRENT, maxFiles: c.PART_MAX_FILES, maxMB: c.PART_MAX_MB,
-      dedupe: c.DEDUPE_CONTENT, visualGroups: c.GROUP_VISUAL_SIMILARITY, streamZip: c.STREAM_ZIP_TO_DISK, template: c.NAME_TEMPLATE,
+      dedupe: c.DEDUPE_CONTENT, visualGroups: c.GROUP_VISUAL_SIMILARITY, streamZip: c.STREAM_ZIP_TO_DISK, verifyZip: c.VERIFY_ZIP, template: c.NAME_TEMPLATE,
       deepCrawl: c.DEEP_CRAWL, articleLinkSelector: c.ARTICLE_LINK_SELECTOR, articleTitleSelector: c.ARTICLE_TITLE_SELECTOR,
       articleNextSelector: c.ARTICLE_NEXT_SELECTOR, articleMaxPages: c.ARTICLE_MAX_PAGES, maxArticles: c.MAX_ARTICLES,
       };
@@ -138,7 +138,7 @@
       const steps = q('steps'), timeout = q('timeout'), useSel = q('useSel'), selector = q('selector'), skip = q('skip');
       const decode = q('decode'), useRep = q('useRep'), replacements = q('replacements'), sourceMode = q('sourceMode'), sourceHosts = q('sourceHosts');
       const retryReferer = q('retryReferer'), filename = q('filename'), concurrent = q('concurrent'), maxFiles = q('maxFiles'), maxMB = q('maxMB');
-      const dedupe = q('dedupe'), visualGroups = q('visualGroups'), streamZip = q('streamZip'), template = q('template');
+      const dedupe = q('dedupe'), visualGroups = q('visualGroups'), streamZip = q('streamZip'), verifyZip = q('verifyZip'), template = q('template');
       const deepCrawl = q('deepCrawl'), articleLinkSelector = q('articleLinkSelector'), articleTitleSelector = q('articleTitleSelector');
       const articleNextSelector = q('articleNextSelector'), articleMaxPages = q('articleMaxPages'), maxArticles = q('maxArticles');
       const deepOnlyControls = [articleLinkSelector, articleTitleSelector, articleNextSelector, articleMaxPages, maxArticles];
@@ -262,7 +262,7 @@
             ZIP_CONCURRENT: num(concurrent, 'Paralel işlem', 1, 10), EXCLUDE_UNKNOWN: unknown.checked,
             DYNAMIC_SCROLL: dynamic.checked, DYNAMIC_STEPS: num(steps, 'Dinamik adım', 0, Number.MAX_SAFE_INTEGER),
             PART_MAX_FILES: num(maxFiles, 'Parça dosya sınırı', 1, 10000), PART_MAX_MB: num(maxMB, 'Parça MB sınırı', 1, 2000),
-            DEDUPE_CONTENT: dedupe.checked, GROUP_VISUAL_SIMILARITY: visualGroups.checked, STREAM_ZIP_TO_DISK: streamZip.checked, NAME_TEMPLATE: template.value.trim() || DEFAULTS.NAME_TEMPLATE,
+            DEDUPE_CONTENT: dedupe.checked, GROUP_VISUAL_SIMILARITY: visualGroups.checked, STREAM_ZIP_TO_DISK: streamZip.checked, VERIFY_ZIP: verifyZip.checked, NAME_TEMPLATE: template.value.trim() || DEFAULTS.NAME_TEMPLATE,
             DEEP_CRAWL: deepCrawl.checked, ARTICLE_LINK_SELECTOR: articleLinkSel, ARTICLE_TITLE_SELECTOR: articleTitleSel || DEFAULTS.ARTICLE_TITLE_SELECTOR,
             ARTICLE_NEXT_SELECTOR: articleNextSel, ARTICLE_MAX_PAGES: deepLimit(articleMaxPages, 'İçerik sayfa sınırı', 0, 10000, c.ARTICLE_MAX_PAGES), MAX_ARTICLES: deepLimit(maxArticles, 'İçerik bağlantısı sınırı', 0, 100000, c.MAX_ARTICLES),
           };
