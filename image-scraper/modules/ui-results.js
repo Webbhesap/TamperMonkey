@@ -4,9 +4,16 @@
   modules.createResultsUI = function createResultsUI(deps) {
     const { $el, dialog, section, ui, readJSON, deleteKey, DEFAULTS, SESSION_KEY, CACHE_KEY, CACHE_CAP, GM_getValue, GM_setValue,
       formatBytes, etaSeconds, formatEta, encodeData, decodeData, adaptivePool, copyText, displayUrl, buildDiagnosticSummary,
-      safeBaseName, zipName, zipEntryName, createUniqueZipFile, saveBlob, generateZipToWritable, generateZipBlob, verifyZipBytes,
+      safeBaseName, safeFolder, zipName, zipEntryName, createUniqueZipFile, saveBlob, generateZipToWritable, generateZipBlob, verifyZipBytes,
       downloadImageRetry, imageFormat, perceptualHash, hashDistance, smartFitMode, checkAbort, isAbort, location, document, window,
       URL, Blob, AbortController, TextEncoder, crypto } = deps;
+    // Bağımlılık sözleşmesi: eksik bağımlılık ilk kullanımda değil, modül
+    // kurulurken anlaşılır bir hatayla bildirilir (geç ReferenceError yerine).
+    const requireDeps = (label, names) => {
+      const missing = names.filter(name => deps?.[name] === undefined);
+      if (missing.length) throw new Error(`${label} modülü için eksik bağımlılık: ${missing.join(', ')}`);
+    };
+    requireDeps('Sonuç arayüzü', ['$el', 'dialog', 'section', 'ui', 'readJSON', 'DEFAULTS', 'GM_getValue', 'GM_setValue', 'formatBytes', 'safeBaseName', 'safeFolder', 'zipName', 'zipEntryName', 'createUniqueZipFile', 'saveBlob', 'generateZipToWritable', 'generateZipBlob', 'verifyZipBytes', 'downloadImageRetry', 'imageFormat', 'perceptualHash', 'hashDistance', 'checkAbort', 'isAbort', 'location', 'document', 'window', 'URL', 'Blob', 'AbortController', 'TextEncoder', 'crypto']);
     if (typeof smartFitMode !== 'function') throw new Error('Slayt gösterisi akıllı sığdırma işlevi bağlanamadı.');
     /**
      * Bağlantı adresini güvenli protokollerle sınırlar. Tarama sırasında toplanan
@@ -547,6 +554,34 @@
         if (order.value === 'bytes') selected.sort((a,b) => (b.bytes||0)-(a.bytes||0));
         return selected;
       };
+      // ---------------------------------------------------------------------
+      // Oturum başına kaynak sınırı: 0 = sınırsız.
+      // Amaç, farkında olmadan binlerce görsel indirip belleği doldurmayı
+      // önlemek. Sınır aşılırsa indirme BAŞLAMAZ; kullanıcıya kaç görselin
+      // fazla olduğu ve nasıl azaltacağı yazılır ("seçerek devam et" yolu).
+      // İndirme sırasında bilinmeyen boyutlar yüzünden sınır aşılırsa işlem
+      // durdurulur ve durum açıkça bildirilir.
+      // ---------------------------------------------------------------------
+      const resourceLimit = () => ({
+        images: Math.max(0, Number(c.MAX_IMAGES) || 0),
+        bytes: Math.max(0, Number(c.MAX_TOTAL_MB) || 0) * 1048576,
+      });
+      const limitPrecheck = selected => {
+        const limit = resourceLimit();
+        if (!limit.images && !limit.bytes) return '';
+        if (limit.images && selected.length > limit.images) {
+          return `Kaynak sınırı aşıldı: ${selected.length} görsel seçili, sınır ${limit.images}. `
+            + 'Seçimi azaltın (çekmecedeki toplu seçimle) veya Ayarlar → Tarama bölümündeki sınırı artırın.';
+        }
+        if (limit.bytes) {
+          const known = selected.reduce((sum, img) => sum + (Number(img.bytes) || 0), 0);
+          if (known > limit.bytes) {
+            return `Kaynak sınırı aşıldı: bilinen boyut ${formatBytes(known)}, sınır ${formatBytes(limit.bytes)}. `
+              + 'Daha küçük görselleri seçin veya sınırı artırın.';
+          }
+        }
+        return '';
+      };
       const VIRTUAL_CARD_HEIGHT = 320, VIRTUAL_OVERSCAN_ROWS = 2;
       let galleryRenderPending = false, cachedFilteredList = null, cachedSelectionList = null;
       // ---------------------------------------------------------------------
@@ -598,7 +633,13 @@
         const fileParts = Math.ceil(chosen.length / Math.max(1, Number(c.PART_MAX_FILES) || 1));
         const byteParts = knownBytes ? Math.ceil(knownBytes / (Math.max(1, Number(c.PART_MAX_MB) || 1) * 1024 * 1024)) : 1;
         const streamAvailable = c.STREAM_ZIP_TO_DISK && typeof window.showDirectoryPicker === 'function';
-        zipPlanStatus.textContent = `ZIP ön kontrolü: ${chosen.length} seçili · bilinen boyut ${formatBytes(knownBytes)} · boyutu bilinmeyen ${unknownSizes} · mevcut bilgilere göre en az ${Math.max(fileParts, byteParts)} parça. Sınırlar: ${c.PART_MAX_FILES} dosya / ${c.PART_MAX_MB} MB-parça. Kesin boyut indirme sonrası belli olur; ${streamAvailable ? 'ZIP akışla diske yazılır, görsel baytları bellekte kalır.' : 'ZIP arşivi oluşturma tarayıcı belleği kullanır.'}`;
+        // Kaynak sınırı açıksa ön kontrolde görünür: kullanıcı ZIP'e basmadan
+        // önce seçiminin sınırı aşıp aşmadığını bilir.
+        const activeLimit = resourceLimit();
+        const limitInfo = (activeLimit.images || activeLimit.bytes)
+          ? ` Oturum sınırı: en fazla ${activeLimit.images ? `${activeLimit.images} görsel` : 'görsel sınırı yok'}${activeLimit.bytes ? ` / ${formatBytes(activeLimit.bytes)}` : ''}${(activeLimit.images && chosen.length > activeLimit.images) || (activeLimit.bytes && knownBytes > activeLimit.bytes) ? ' — ⚠ seçim sınırı aşıyor.' : '.'}`
+          : '';
+        zipPlanStatus.textContent = `ZIP ön kontrolü: ${chosen.length} seçili · bilinen boyut ${formatBytes(knownBytes)} · boyutu bilinmeyen ${unknownSizes} · mevcut bilgilere göre en az ${Math.max(fileParts, byteParts)} parça. Sınırlar: ${c.PART_MAX_FILES} dosya / ${c.PART_MAX_MB} MB-parça. Kesin boyut indirme sonrası belli olur; ${streamAvailable ? 'ZIP akışla diske yazılır, görsel baytları bellekte kalır.' : 'ZIP arşivi oluşturma tarayıcı belleği kullanır.'}${limitInfo}`;
         zip.disabled = !!zipController || !chosen.length;
         text.value = chosen.map(i => displayUrl(i.url, c)).join('\n');
         const viewportWidth = Number(window.innerWidth) || 1280;
@@ -1112,11 +1153,19 @@
       zip.onclick = async () => {
         if (zipController) return;
         const selected = selection(); if (!selected.length) return;
+        const limitProblem = limitPrecheck(selected);
+        if (limitProblem) {
+          setStage('ready'); stopStallWatch();
+          status.textContent = '⛔ ' + limitProblem;
+          return;
+        }
         zipController = new AbortController(); const signal = zipController.signal;
         zip.disabled = true; cancel.hidden = false; progress.hidden = false; progress.value = 0;
         failedItems = []; zipVerification = ''; retryFailedButton.hidden = true; retryZipButton.hidden = true;
         setStage('download'); startStallWatch();
         let same = 0, gm = 0, cached = 0, failed = 0, bytesTotal = 0;
+        const limit = resourceLimit();
+        let limitStopped = false;
         const errors = [], verificationUrls = new Map();
         details.hidden = true; errorList.textContent = ''; verifyLinks.replaceChildren();
         objectUrls.splice(0).forEach(URL.revokeObjectURL); manual.replaceChildren();
@@ -1147,6 +1196,11 @@
               }
               img.status = 'başarılı'; img.error = ''; img.bytes = item.data.byteLength; img.ext = item.ext;
               results[i] = item; bytesTotal += item.data.byteLength;
+              // Bilinmeyen boyutlar yüzünden sınır indirme sırasında aşılabilir.
+              if (limit.bytes && bytesTotal > limit.bytes && !limitStopped) {
+                limitStopped = true;
+                zipController?.abort();
+              }
             } catch (e) {
               if (isAbort(e)) throw e;
               failed++; img.status = 'hata'; img.error = e.message; errors.push(`${img.url} — ${e.message}`); failedItems.push(img);
@@ -1193,6 +1247,23 @@
           }
           if (!same && !gm && !cached) throw new Error('Hiçbir resim indirilemedi. Hata ayrıntılarını kontrol edin.');
           const digits = Math.max(3, String(selected.length).length), files = [], hashes = new Map(), names = new Set();
+          // Manifest kayıtları ve içerik hash'leri: manifest dosyası arşive
+          // eklendiğinde her görselin adı, kaynağı, ölçüsü ve boyutu yazılır.
+          const manifestEntries = new Map(), contentHashes = new Map();
+          const zipFolderFor = img => {
+            const mode = c.ZIP_FOLDERS || 'none';
+            if (mode === 'host') {
+              try { return safeFolder(new URL(img.url).host.replace(/^www\./i, '')); } catch { return safeFolder('bilinmeyen-alan-adi'); }
+            }
+            if (mode === 'page') {
+              try {
+                const parsed = new URL(img.page || img.articleUrl || '');
+                const path = parsed.pathname.replace(/\/index\.[a-z]+$/i, '').replace(/\/+$/, '');
+                return safeFolder(`${parsed.host.replace(/^www\./i, '')}${path}`);
+              } catch { return safeFolder('bilinmeyen-sayfa'); }
+            }
+            return '';
+          };
           for (let i = 0; i < results.length; i++) {
             const item = results[i]; if (!item) continue;
             if (c.DEDUPE_CONTENT) {
@@ -1205,11 +1276,19 @@
                 renderContentDuplicatePairs(); scheduleSave(); continue;
               }
               hashes.set(hash, i);
+              contentHashes.set(i, hash);
             }
             const img = selected[i];
             const values = { sira: String(i + 1).padStart(digits, '0'), sayfa: String(Math.max(1, pages.indexOf(img.page) + 1)), orijinal_ad: safeBaseName(img.url), boyut: img.width && img.height ? `${img.width}x${img.height}` : 'bilinmiyor' };
             const base = (c.NAME_TEMPLATE || DEFAULTS.NAME_TEMPLATE).replace(/\{(sira|sayfa|orijinal_ad|boyut)\}/g, (_, k) => values[k]);
-            const name = zipEntryName(base, item.ext, names); files.push({ name, data: item.data });
+            // Klasörleme açıksa ad, tam yol üzerinden tekilleştirilir.
+            const name = zipEntryName(base, item.ext, names, zipFolderFor(img));
+            files.push({ name, data: item.data });
+            manifestEntries.set(name, {
+              sira: i + 1, dosya: name, url: img.url, kaynak_sayfa: img.page || '',
+              genislik: img.width || null, yukseklik: img.height || null, boyut_bayt: item.data.byteLength,
+              tur: item.ext, sha256: contentHashes.get(i) || null,
+            });
           }
           if (errors.length) files.push({ name: names.has('_indirme_hatalari.txt') ? '_indirme_hatalari_rapor.txt' : '_indirme_hatalari.txt', data: new TextEncoder().encode(errors.join('\n')) });
           // ZIP32 uyumu ve kullanıcı limiti: dosyalar ancak tam dosya sınırından bölünebilir.
@@ -1221,11 +1300,41 @@
             part.push(file); size += n;
           }
           if (part.length) parts.push(part);
+          // Kaynak manifesti: arşive makine okunabilir bir dizin ekler.
+          // URL'ler imzalı/hassas parametre içerebilir; kullanıcı bunu
+          // ayarlardaki yardım balonunda açıkça görür ve varsayılan kapalıdır.
+          let manifestFiles = null;
+          if (c.ZIP_MANIFEST) {
+            const manifestName = zipEntryName('manifest', 'json', names);
+            manifestFiles = { name: manifestName, build: partFiles => {
+              const entries = partFiles.map(file => manifestEntries.get(file.name)).filter(Boolean);
+              const manifest = {
+                olusturuldu: new Date().toISOString(),
+                kaynak: location.origin,
+                kaynak_sayfa: location.href,
+                parca: parts.length > 1 ? `${parts.indexOf(partFiles) + 1}/${parts.length}` : null,
+                ayarlar: {
+                  ad_sablonu: c.NAME_TEMPLATE || DEFAULTS.NAME_TEMPLATE,
+                  klasorleme: c.ZIP_FOLDERS || 'none',
+                  parca_dosya_siniri: c.PART_MAX_FILES,
+                  parca_mb_siniri: c.PART_MAX_MB,
+                  sha256_tekillestirme: !!c.DEDUPE_CONTENT,
+                },
+                dosya_sayisi: entries.length,
+                indirme_hatasi: errors.length,
+                dosyalar: entries,
+              };
+              return { name: manifestName, data: new TextEncoder().encode(JSON.stringify(manifest, null, 2)) };
+            } };
+          }
           setStage('dedupe'); touchProgress();
           const zipStartedAt = Date.now(), zipTotalBytes = files.reduce((sum, file) => sum + file.data.byteLength, 0);
           setStage('archive'); touchProgress();
           let zipDoneBytes = 0;
           for (let p = 0; p < parts.length; p++) {
+            // Manifest, arşivin kendi parçasına eklenir; her parça kendi
+            // içindekileri listeler (bölünmüş arşivlerde karışıklık olmaz).
+            parts[p] = manifestFiles ? [manifestFiles.build(parts[p]), ...parts[p]] : parts[p];
             const currentPartBytes = parts[p].reduce((sum, file) => sum + file.data.byteLength, 0);
             const reportZipProgress = pct => {
               touchProgress();
@@ -1267,7 +1376,9 @@
           status.textContent = `✅ ${parts.length} ZIP ${streamingDirectory ? 'seçilen klasöre akışla yazıldı' : 'hazır'} · ${same + gm + cached} indirildi · ${failed} hata${zipVerification ? ` · ${zipVerification}` : ''}. ${streamingDirectory ? 'ZIP arşivinin ek kopyası bellekte oluşturulmadı; görsel verileri bellekte tutulur.' : parts.length > 1 ? 'Her parçayı aşağıdan ayrı indirin.' : 'İndirme başlamazsa bağlantıya tıklayın.'}`;
         } catch (e) {
           stopStallWatch();
-          status.textContent = isAbort(e) ? '⏹️ ZIP işlemi iptal edildi.' : '❌ ' + e.message;
+          status.textContent = limitStopped
+            ? `⛔ Kaynak sınırı aşıldı (${formatBytes(bytesTotal)}, sınır ${formatBytes(limit.bytes)}); indirme durduruldu. Seçimi azaltıp yeniden deneyin.`
+            : isAbort(e) ? '⏹️ ZIP işlemi iptal edildi.' : '❌ ' + e.message;
           if (!isAbort(e)) { console.error('[Image Scraper]', e); retryZipButton.hidden = false; }
           else retryZipButton.hidden = false;
         } finally { zipController = null; render(); cancel.hidden = true; }

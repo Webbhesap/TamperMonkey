@@ -2,6 +2,13 @@
 (function (global) {
   const modules = global.ImageScraperModules || (global.ImageScraperModules = Object.create(null));
   modules.createZipModule = function createZipModule(deps) {
+    // Bağımlılık sözleşmesi: eksik bir bağımlılık ilk kullanımda değil,
+    // modül kurulurken anlaşılır bir hatayla bildirilir.
+    const requireDeps = (label, names) => {
+      const missing = names.filter(name => deps?.[name] === undefined);
+      if (missing.length) throw new Error(`${label} modülü için eksik bağımlılık: ${missing.join(', ')}`);
+    };
+    requireDeps('ZIP', ['$el', 'document', 'URL', 'Blob', 'Uint8Array', 'checkAbort', 'abortError']);
     const { $el, document, URL, Blob, Uint8Array, checkAbort, abortError } = deps;
     function safeBaseName(url) {
       let name = '';
@@ -14,11 +21,40 @@
       name = name.replace(/[\\/<>:"|?*\x00-\x1f\x7f]/g, '_').replace(/^\.+|[. ]+$/g, '').slice(0, 150) || 'images.zip';
       return /\.zip$/i.test(name) ? name : name + '.zip';
     }
-    function zipEntryName(value, extension, usedNames) {
+    /**
+     * ZIP içi klasör adı. Kaynak sayfa ya da alan adı yol parçalarına ayrılır,
+     * her parça dosya adlarıyla aynı güvenlik kurallarından geçer:
+     *   - yol ayırıcı ve denetim karakterleri temizlenir,
+     *   - Windows ayrılmış adları (CON/PRN/…) ön ek alır,
+     *   - boş parçalar ve `..` gibi kaçışlar atılır,
+     *   - toplam uzunluk 120 karakterle sınırlanır.
+     * Klasör her zaman arşiv içinde kalır; dışına yazmaz.
+     */
+    function safeFolder(value, maxLength = 120) {
+      const parts = String(value ?? '').split('/').map(part => part.trim())
+        .filter(part => part && part !== '.' && part !== '..')
+        .map(part => {
+          let name = part.replace(/[\\/<>:"|?*\x00-\x1f\x7f]/g, '_').replace(/^\.+|[. ]+$/g, '');
+          if (/^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i.test(name)) name = '_' + name;
+          return name;
+        })
+        .filter(Boolean);
+      let result = parts.join('/');
+      while (result.length > maxLength) {
+        // Sondan parça at; tek parça kaldıysa kırp.
+        if (parts.length > 1) { parts.pop(); result = parts.join('/'); }
+        else { result = result.slice(0, maxLength); break; }
+      }
+      return result.replace(/^\/+|\/+$/g, '');
+    }
+    function zipEntryName(value, extension, usedNames, folder = '') {
       let base = String(value ?? '').replace(/[\\/<>:"|?*\x00-\x1f\x7f]/g, '_').replace(/^\.+|[. ]+$/g, '').slice(0, 150) || 'image';
       if (/^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i.test(base)) base = '_' + base;
-      let name = `${base}.${extension}`, suffix = 2;
-      while (usedNames.has(name.toLowerCase())) name = `${base}_${suffix++}.${extension}`;
+      // Klasör (isteğe bağlı): çakışma kontrolü tam yol üzerinden yapılır,
+      // böylece farklı klasörlerdeki aynı dosya adları korunur.
+      const prefix = folder ? `${safeFolder(folder)}/` : '';
+      let name = `${prefix}${base}.${extension}`, suffix = 2;
+      while (usedNames.has(name.toLowerCase())) name = `${prefix}${base}_${suffix++}.${extension}`;
       usedNames.add(name.toLowerCase());
       return name;
     }
@@ -132,6 +168,6 @@
       }
       return { ok: problems.length === 0, problems, entries, byteLength: data.byteLength };
     }
-    return { safeBaseName, zipName, zipEntryName, createUniqueZipFile, saveBlob, buildZip, consumeZipStream, generateZipBlob, generateZipToWritable, verifyZipBytes };
+    return { safeBaseName, safeFolder, zipName, zipEntryName, createUniqueZipFile, saveBlob, buildZip, consumeZipStream, generateZipBlob, generateZipToWritable, verifyZipBytes };
   };
 })(globalThis);

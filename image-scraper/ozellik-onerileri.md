@@ -7,8 +7,9 @@ Kural: bir madde uygulandığında bu dosyadan **çıkarılır** ve
 `tamamlanmis-ozellikler.md` içine tarih + nasıl yapıldığı bilgisiyle eklenir.
 Böylece burada kalan her madde gerçekten "yapılacak iş" listesidir.
 
-> Son gözden geçirme: 2026-11-03. Mevcut ayarlar ve özellikler taranarak
-> tekrar eden maddeler çıkarıldı.
+> Son gözden geçirme: 2026-11-03. ZIP klasörleme, kaynak manifesti,
+> iş akışı profilleri, kaynak sınırı ve modül bağımlılık sözleşmeleri
+> uygulandı; maddeler bu dosyadan çıkarıldı.
 
 ---
 
@@ -22,9 +23,6 @@ Böylece burada kalan her madde gerçekten "yapılacak iş" listesidir.
 
 ## Orta öncelik
 
-- **Oturum başına toplam kaynak sınırı:** Mevcut adaptif eşzamanlılığa ek
-  olarak toplam indirilen bayt veya görsel adedi için isteğe bağlı üst sınır;
-  sınıra yaklaşınca uyar ve "durdur / seçerek devam et" sun.
 - **Kategori ve içerik sayfalarının sınırlarını görünür kıl:** Kategori sayfa
   sayısını, bulunan farklı içerik bağlantılarını ve her içerikte gezilen alt
   sayfaları ayrı sayaçlarla göster; `/page/2` gibi sayfaların yeni makale
@@ -46,10 +44,6 @@ Böylece burada kalan her madde gerçekten "yapılacak iş" listesidir.
   sonuç güncelleme ve oturum kaydetmeyi binlerce görselde ölç; uzun ana iş
   parçacığı görevlerini azalt ve ölçümleri regresyon testine bağla.
   *(5.200 görsel için tarama süresi ve sanallaştırma regresyon testi var.)*
-- **Modül bağımlılık sözleşmeleri:** Fabrika çağrıları doğrulanıyor, ancak
-  modül içindeki tek tek bağımlılıkların (ör. eksik `saveBlob`) önceden
-  doğrulanması yapılmıyor; eksik bağımlılık geç bir `ReferenceError` yerine
-  başlangıçta anlaşılır hata vermeli.
 
 ## Yeni özellikler
 
@@ -66,19 +60,11 @@ Böylece burada kalan her madde gerçekten "yapılacak iş" listesidir.
 - **Benzer görselleri ZIP öncesi gözden geçirme:** Algısal benzerlik
   gruplarını yan yana göster, kullanıcı tutulacakları seçsin. Otomatik silme
   varsayılan olmasın.
-- **ZIP'e kaynak manifesti ekleme:** İsteğe bağlı `manifest.json`; dosya adı,
-  kaynak URL, kaynak sayfa, ölçüler ve varsa içerik hash'i. URL'lerde
-  hassas/imzalı parametre olabileceğini açıkça uyar.
-- **ZIP içi klasörleme:** Dosyaları kaynak sayfaya, alan adına veya ad
-  şablonuna göre klasörle; güvenli ve çakışmasız adlandırmayı koru.
 - **Kaynak sayfaya göre gruplama ve ayrı ZIP:** Sayfa/alan adı/format bazında
   *seçim* hazır (çekmecedeki toplu seçim). Kalan iş: galeride bu ölçütlere göre
   gruplanmış bölüm başlıkları ve tek grubu ayrı ZIP'e çıkarma.
 - **Yan yana görsel karşılaştırıcı:** İki görseli eş zamanlı yakınlaştırma ve
   kaydırmayla karşılaştır; benzer gruplarda en iyi kopyayı seçmeye yardımcı olur.
-- **Kaydedilebilir iş akışı profilleri:** Site profillerinden ayrı olarak
-  "hızlı tarama", "düşük bellek", "yüksek çözünürlük" gibi adlandırılmış ayar
-  kombinasyonları oluşturup tek tıkla uygula.
 - **Kalıcı favoriler ve koleksiyonlar:** Görselleri oturumlar arasında
   favorile veya adlandırılmış koleksiyonlara ekle; depolama ve gizlilik
   etkisini açıkça göster.

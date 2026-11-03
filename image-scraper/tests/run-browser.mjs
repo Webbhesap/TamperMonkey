@@ -355,6 +355,152 @@ if (only('Sayfa kuyruğu')) {
 }
 
 // ---------------------------------------------------------------------------
+// İş akışı profilleri: tarama + görsel + ZIP ayarlarını birlikte uygulayan
+// adlandırılmış kombinasyonlar. Üç hazır profil var, kullanıcı kendi profilini
+// kaydedebilir; hazır profiller silinemez.
+if (only('İş akışı profilleri')) {
+  t.test('İş akışı profilleri: uygula, kaydet, sil');
+  const page = await openApp('/basic/');
+  await page.evaluate(() => document.getElementById('__image_scraper_v4__').shadowRoot.querySelector('.launch [data-isp-action="settings"]').click());
+  await new Promise(resolve => setTimeout(resolve, 400));
+
+  const initial = await page.evaluate(() => {
+    const root = document.getElementById('__image_scraper_v4__').shadowRoot;
+    const select = root.querySelector('[data-control="workflowPreset"]');
+    const options = [...select.options].map(option => option.textContent);
+    root.querySelector('[data-action="workflow-apply"]').click();
+    return { options, status: root.querySelector('[data-control="workflowStatus"]').textContent };
+  });
+  t.equal(initial.options, ['Profil seç…', 'Hızlı tarama (hazır)', 'Düşük bellek (hazır)', 'Yüksek çözünürlük (hazır)'], 'Hazır profiller listelenmiyor');
+  t.includes(initial.status, 'profil seç', 'Seçimsiz uygulama yönlendirmiyor: ' + initial.status);
+
+  const applied = await page.evaluate(() => {
+    const root = document.getElementById('__image_scraper_v4__').shadowRoot;
+    const select = root.querySelector('[data-control="workflowPreset"]');
+    select.value = 'Düşük bellek';
+    root.querySelector('[data-action="workflow-apply"]').click();
+    const config = JSON.parse(window.GM_getValue('isp_config', '{}'));
+    return {
+      status: root.querySelector('[data-control="workflowStatus"]').textContent,
+      concurrent: config.ZIP_CONCURRENT, maxFiles: config.PART_MAX_FILES, maxMB: config.PART_MAX_MB,
+      formConcurrent: root.querySelector('[data-control="concurrent"]').value,
+      formMaxMB: root.querySelector('[data-control="maxMB"]').value,
+    };
+  });
+  t.includes(applied.status, 'uygulandı', 'Uygulama geri bildirimi yok: ' + applied.status);
+  t.equal(applied.concurrent, 1, 'Profil ZIP eşzamanlılığını uygulamadı');
+  t.equal(applied.formConcurrent, '1', 'Profil form alanını güncellemedi');
+  t.equal(applied.maxMB, 50, 'Profil parça MB sınırını uygulamadı');
+  t.equal(applied.formMaxMB, '50', 'Form parça MB sınırı güncellenmedi');
+
+  const saved = await page.evaluate(() => {
+    const root = document.getElementById('__image_scraper_v4__').shadowRoot;
+    const name = root.querySelector('[data-control="workflowName"]');
+    name.value = 'Benim profilim';
+    root.querySelector('[data-action="workflow-save"]').click();
+    const select = root.querySelector('[data-control="workflowPreset"]');
+    const options = [...select.options].map(option => option.textContent);
+    const stored = JSON.parse(window.GM_getValue('isp_workflows_v1', '{}'));
+    // Hazır adla kaydetmeyi dene
+    name.value = 'Hızlı tarama';
+    root.querySelector('[data-action="workflow-save"]').click();
+    const reserved = root.querySelector('[data-control="workflowStatus"]').textContent;
+    // Hazır profili silmeyi dene
+    select.value = 'Düşük bellek';
+    root.querySelector('[data-action="workflow-delete"]').click();
+    const builtinDelete = root.querySelector('[data-control="workflowStatus"]').textContent;
+    // Kullanıcı profilini sil
+    select.value = 'Benim profilim';
+    root.querySelector('[data-action="workflow-delete"]').click();
+    return {
+      options, names: Object.keys(stored), savedConfig: stored['Benim profilim']?.PART_MAX_MB,
+      reserved, builtinDelete,
+      afterDelete: [...select.options].map(option => option.textContent),
+      deleteStatus: root.querySelector('[data-control="workflowStatus"]').textContent,
+      storage: window.GM_getValue('isp_workflows_v1', '{}'),
+    };
+  });
+  t.ok(saved.options.includes('Benim profilim'), 'Kaydedilen profil listede yok: ' + saved.options.join(', '));
+  t.equal(saved.names, ['Benim profilim'], 'Profil deposu beklenmedik: ' + saved.names.join(', '));
+  t.equal(saved.savedConfig, 50, 'Profil kayıtlı ayarı yakalamamış');
+  t.includes(saved.reserved, 'Hazır profil adları', 'Hazır adla kaydetme engellenmiyor: ' + saved.reserved);
+  t.includes(saved.builtinDelete, 'silinemez', 'Hazır profil silinebiliyor: ' + saved.builtinDelete);
+  t.ok(!saved.afterDelete.includes('Benim profilim'), 'Kullanıcı profili silinmedi');
+  t.includes(saved.deleteStatus, 'silindi', 'Silme geri bildirimi yok: ' + saved.deleteStatus);
+  t.equal(saved.storage, '{}', 'Profil deposu silme sonrası boş değil: ' + saved.storage);
+  t.equal(page.__pageErrors.length, 0, 'İş akışı profilinde sayfa hatası: ' + page.__pageErrors[0]);
+  await page.close();
+}
+
+// ---------------------------------------------------------------------------
+// ZIP içi klasörleme, kaynak manifesti ve oturum başına kaynak sınırı.
+if (only('ZIP klasörleme')) {
+  t.test('ZIP klasörleme ve kaynak manifesti');
+  const readZip = async page => {
+    await page.evaluate(() => {
+      const root = document.getElementById('__image_scraper_v4__').shadowRoot;
+      const tab = [...root.querySelectorAll('.result-tabs button')].find(b => b.textContent === 'ZIP ve indirme');
+      tab.click();
+      root.querySelector('.result-pane [class="primary"]').click();
+    });
+    await page.waitForFunction(() => {
+      const root = document.getElementById('__image_scraper_v4__').shadowRoot;
+      const panes = [...root.querySelectorAll('.result-pane')];
+      const status = panes[2]?.querySelector('.status')?.textContent || '';
+      return !!panes[2]?.querySelector('a.download-link') || status.startsWith('⛔') || status.startsWith('❌');
+    }, { timeout: 90000, polling: 100 });
+    return page.evaluate(async () => {
+      const root = document.getElementById('__image_scraper_v4__').shadowRoot;
+      const panes = [...root.querySelectorAll('.result-pane')];
+      const link = panes[2]?.querySelector('a.download-link');
+      const status = panes[2]?.querySelector('.status')?.textContent || '';
+      if (!link) return { error: true, status };
+      const zip = await JSZip.loadAsync(await (await fetch(link.href)).arrayBuffer());
+      const names = Object.keys(zip.files).filter(name => !zip.files[name].dir);
+      const manifestName = names.find(name => name.endsWith('manifest.json'));
+      const manifest = manifestName ? JSON.parse(await zip.file(manifestName).async('string')) : null;
+      return { error: false, status, names, manifestName, manifest };
+    });
+  };
+
+  // 1) Alan adına göre klasörleme + manifest
+  const hostPage = await openApp('/basic/');
+  await setStorage(hostPage, { isp_config: JSON.stringify({ MIN_WIDTH: 0, MIN_HEIGHT: 0, ZIP_FILENAME: 'klasor.zip', ZIP_FOLDERS: 'host', ZIP_MANIFEST: true }) });
+  await runScan(hostPage);
+  const hostZip = await readZip(hostPage);
+  t.ok(!hostZip.error, 'Klasörlü ZIP üretilemedi: ' + hostZip.status);
+  t.ok(hostZip.names.every(name => name === hostZip.manifestName || name.includes('/')), 'Klasörsüz dosya kaldı: ' + hostZip.names.join(', '));
+  t.ok(hostZip.names.every(name => !name.includes(':')), 'Klasör adında geçersiz karakter var');
+  t.equal(hostZip.manifestName, 'manifest.json', 'Manifest kökte değil');
+  t.equal(hostZip.manifest?.dosyalar?.length, hostZip.names.length - 1, 'Manifest dosya sayısı arşivle uyuşmuyor');
+  t.equal(hostZip.manifest?.ayarlar?.klasorleme, 'host', 'Manifest klasörleme ayarını yazmıyor');
+  t.ok(hostZip.manifest?.dosyalar?.every(entry => entry.url && entry.dosya && entry.kaynak_sayfa), 'Manifest kayıtları eksik');
+  t.equal(hostPage.__pageErrors.length, 0, 'Klasörlü ZIP’te sayfa hatası: ' + hostPage.__pageErrors[0]);
+  await hostPage.close();
+
+  // 2) Kaynak sayfa yoluna göre klasörleme
+  const pageMode = await openApp('/basic/');
+  await setStorage(pageMode, { isp_config: JSON.stringify({ MIN_WIDTH: 0, MIN_HEIGHT: 0, ZIP_FILENAME: 'sayfa.zip', ZIP_FOLDERS: 'page', ZIP_MANIFEST: false }) });
+  await runScan(pageMode);
+  const pageZip = await readZip(pageMode);
+  t.ok(!pageZip.error, 'Sayfa klasörlemeli ZIP üretilemedi: ' + pageZip.status);
+  t.ok(pageZip.names.every(name => name.startsWith('127.0.0.1_')), 'Sayfa klasörü alan adıyla başlamıyor: ' + pageZip.names.slice(0, 2).join(', '));
+  t.ok(!pageZip.names.some(name => name.endsWith('manifest.json')), 'Manifest kapalıyken eklendi');
+  await pageMode.close();
+
+  // 3) Kaynak sınırı: sınır aşılırsa işlem başlamaz
+  const limitPage = await openApp('/basic/');
+  await setStorage(limitPage, { isp_config: JSON.stringify({ MIN_WIDTH: 0, MIN_HEIGHT: 0, MAX_IMAGES: 3 }) });
+  await runScan(limitPage);
+  const limited = await readZip(limitPage);
+  t.ok(limited.error, 'Sınır aşılmasına rağmen ZIP üretildi');
+  t.includes(limited.status, 'Kaynak sınırı aşıldı', 'Sınır hatası açıklanmıyor: ' + limited.status);
+  t.includes(limited.status, 'sınır 3', 'Sınır değeri mesajda yok: ' + limited.status);
+  t.equal(limitPage.__pageErrors.length, 0, 'Sınır senaryosunda sayfa hatası: ' + limitPage.__pageErrors[0]);
+  await limitPage.close();
+}
+
+// ---------------------------------------------------------------------------
 if (only('ZIP')) {
   t.test('ZIP üretimi: dosyalar, adlar ve tekilleştirme');
   const page = await openApp('/basic/');

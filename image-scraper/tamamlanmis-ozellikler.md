@@ -8,6 +8,69 @@ eklenir. Amaç: hangi işin bittiğini tek bakışta görmek.
 
 ---
 
+## 2026-11-03 — ZIP paketleme, iş akışı profilleri ve kaynak sınırı
+
+### ZIP içi klasörleme
+- **Yeni ayar `ZIP_FOLDERS`:** `none` (düz), `host` (kaynak alan adı) veya
+  `page` (kaynak sayfa yolu).
+- Klasör adı `safeFolder()` ile üretilir: yol ayırıcıları ve denetim
+  karakterleri temizlenir, `..` gibi kaçışlar atılır, Windows ayrılmış adları
+  (CON/PRN/…) ön ek alır, toplam uzunluk 120 karakterle sınırlanır. Klasör
+  arşivin dışına yazmaz.
+- **Ad çakışması tam yol üzerinden çözülür:** `zipEntryName(..., folder)`
+  artık klasör parametresi alır; farklı klasörlerdeki aynı dosya adları
+  korunur, aynı klasörde `_2` sonekiyle tekilleştirilir.
+- Ölçüm (Chromium): `ZIP_FOLDERS=host` → `127.0.0.1_44793/001_red-400x300.png`;
+  `page` → `127.0.0.1_44793/001_…` (sayfa yolu kök olduğu için yalnız alan adı).
+  Klasör adındaki `:` karakteri `_` olur (ZIP güvenliği).
+
+### Kaynak manifesti (`manifest.json`)
+- **Yeni ayar `ZIP_MANIFEST`** (varsayılan kapalı). Arşive kökte
+  `manifest.json` eklenir: oluşturma zamanı, kaynak, kaynak sayfa, parça
+  numarası, uygulanan ad şablonu / klasörleme / parça sınırları, hata sayısı ve
+  her dosya için `{sira, dosya, url, kaynak_sayfa, genislik, yukseklik,
+  boyut_bayt, tur, sha256}`.
+- **Bölünmüş arşivlerde her parça kendi manifestini taşır**, böylece parça
+  başına içindekiler listesi doğrudur.
+- Gizlilik: URL'ler imzalı/hassas parametre içerebilir; ayarın yardım
+  balonunda açıkça uyarılır ve varsayılan kapalıdır.
+
+### Kaynak sınırı (oturum başına)
+- **Yeni ayarlar `MAX_IMAGES` ve `MAX_TOTAL_MB`** (0 = sınırsız).
+- ZIP ön kontrolünde sınır ve aşım durumu görünür ("⚠ seçim sınırı aşıyor").
+- Sınır aşılırsa **ZIP başlamaz**: “⛔ Kaynak sınırı aşıldı: 7 görsel seçili,
+  sınır 3. Seçimi azaltın … veya Ayarlar → Tarama bölümündeki sınırı artırın.”
+- İndirme sırasında bilinmeyen boyutlar yüzünden sınır aşılırsa işlem
+  durdurulur ve kalan seçimle yeniden denenebilir.
+
+### İş akışı profilleri
+- **Genel sekmesinde yeni bölüm.** Üç hazır profil: **Hızlı tarama**,
+  **Düşük bellek**, **Yüksek çözünürlük** — tarama + görsel + ZIP ayarlarını
+  birlikte uygular.
+- Kullanıcı, kayıtlı ayarlarını adlandırıp kendi profilini kaydedebilir
+  (`isp_workflows_v1`); hazır profiller silinemez, hazır adlar kullanılamaz.
+- Uygulama anında `saveConfig` çalışır, form alanları tek bir eşlemeden
+  (`configToControls` + `syncControls`) yenilenir; böylece ekran ile ayarlar
+  ayrışmaz. Etkin site profili varsa değerlerin ezilebileceği yazılır.
+
+### Modül bağımlılık sözleşmeleri
+- Altı modül fabrikası (zip, settings-ui, page-tools, network, image-analysis,
+  ui-results) kurulum anında zorunlu bağımlılıklarını doğrular:
+  `"<Modül> modülü için eksik bağımlılık: a, b"`.
+- Statik test, her fabrikayı boş bir `vm` bağlamında `{}` ile çağırıp anlaşılır
+  hata ve eksik ad listesi üretmesini doğrular. Geç `ReferenceError` yerine
+  başlangıç hatası.
+
+### Doğrulama
+- Statik **48/48** · Loader **56/56** · Tarayıcı **229/229** · ESLint temiz.
+- Yeni tarayıcı testleri: `İş akışı profilleri` (16 kontur — liste, seçimsiz
+  uygulama, uygulama sonrası config + form, kaydet, hazır ad koruması, hazır
+  profil silme koruması, kullanıcı profilini silme), `ZIP klasörleme`
+  (15 kontur — host/page klasörleri, manifest alanları ve sayaçları, sınır
+  aşımında işlemin başlamaması).
+
+---
+
 ## 2026-11-03 — Filtre çekmecesi yenilendi (görünüm ayarları dâhil)
 
 ### Çekmece yapısı

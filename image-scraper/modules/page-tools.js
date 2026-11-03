@@ -2,6 +2,13 @@
 (function (global) {
   const modules = global.ImageScraperModules || (global.ImageScraperModules = Object.create(null));
   modules.createPageTools = function createPageTools(deps) {
+    // Bağımlılık sözleşmesi: eksik bağımlılık ilk kullanımda değil, modül
+    // kurulurken anlaşılır bir hatayla bildirilir (geç ReferenceError yerine).
+    const requireDeps = (label, names) => {
+      const missing = names.filter(name => deps?.[name] === undefined);
+      if (missing.length) throw new Error(`${label} modülü için eksik bağımlılık: ${missing.join(', ')}`);
+    };
+    requireDeps('Sayfa araçları', ['document', 'location', 'normalizeExcludedSite', 'isExcludedHost', 'DEFAULTS']);
     const { document, location, normalizeExcludedSite, isExcludedHost, DEFAULTS } = deps;
     function buildUrl(raw, base, config) {
       try {
