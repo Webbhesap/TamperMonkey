@@ -157,17 +157,69 @@
       tabs.appendChild(openFilterDrawer);
       const filterDrawerBackdrop = $el('div', { class:'filter-drawer-backdrop', hidden:true });
       const filterDrawerPanel = $el('div', { class:'filter-drawer-panel', role:'dialog', 'aria-modal':'true', 'aria-label':'Görselleri filtrele ve seç' });
+      // ---------------------------------------------------------------------
+      // Filtre çekmecesi — başlıklı bölümler, canlı sayaç, filtre rozetleri
+      // Önceki hâli eşit ağırlıklı birkaç "toolbar" satırıydı: hangi alanın ne
+      // işe yaradığı, hangi filtrelerin etkin olduğu ve geriye kaç görsel
+      // kaldığı görünmüyordu. Yeni düzen:
+      //   · bölümler: Ara / Filtreler / Görünüm / Toplu seçim / İşlemler
+      //   · her kontrolün kalıcı etiketi (yer tutucu metin kaybolmuyor)
+      //   · canlı sayaç ve tek tıkla kaldırılabilen etkin filtre rozetleri
+      //   · görünüm tercihleri (resim altı açıklamaları, sütun sayısı)
+      //     oturumlar arası saklanır
+      // ---------------------------------------------------------------------
+      const VIEW_PREFS_KEY = 'isp_view_prefs_v1';
+      const storedPrefs = readJSON(VIEW_PREFS_KEY, {}) || {};
+      const viewPrefs = {
+        captions: storedPrefs.captions !== false,
+        columns: Math.min(6, Math.max(0, Math.floor(Number(storedPrefs.columns) || 0))),
+        onlySelected: storedPrefs.onlySelected === true,
+        reverse: storedPrefs.reverse === true,
+        previews: storedPrefs.previews !== false,
+        fit: storedPrefs.fit === 'cover' ? 'cover' : 'contain',
+      };
+      const saveViewPrefs = () => { try { GM_setValue(VIEW_PREFS_KEY, JSON.stringify(viewPrefs)); } catch (error) { console.warn('[Image Scraper] Görünüm tercihleri kaydedilemedi', error); } };
       const filterDrawerHeader = $el('div', { class:'filter-drawer-header' });
-      filterDrawerHeader.append($el('h3', {}, 'Görselleri filtrele ve seç'));
+      const drawerTitleBlock = $el('div', { class:'drawer-title-block' });
+      const drawerSubtitle = $el('p', { class:'drawer-subtitle', role:'status', 'aria-live':'polite' });
+      // Etkin filtre rozetleri başlıkta durur: kullanıcı çekmecede aşağı
+      // kaydırsa da hangi filtrelerin açık olduğunu ve tek tıkla nasıl
+      // kaldıracağını görür.
+      const chips = $el('div', { class:'drawer-chips drawer-header-chips', role:'group', 'aria-label':'Etkin filtreler', hidden:true });
+      drawerTitleBlock.append($el('h3', {}, 'Görselleri filtrele ve seç'), drawerSubtitle, chips);
       const closeFilterDrawer = $el('button', { type:'button', class:'close filter-drawer-close', 'aria-label':'Filtre çekmecesini kapat' }, '×');
-      filterDrawerHeader.appendChild(closeFilterDrawer);
+      filterDrawerHeader.append(drawerTitleBlock, closeFilterDrawer);
       const tools = $el('div', { class:'filter-drawer-body' });
+      /** Başlıklı çekmece bölümü: başlık + isteğe bağlı kısa açıklama. */
+      const drawerSection = (title, hint) => {
+        const element = $el('section', { class:'drawer-section' });
+        const head = $el('div', { class:'drawer-section-head' });
+        head.appendChild($el('h4', {}, title));
+        if (hint) head.appendChild($el('small', { class:'drawer-section-hint' }, hint));
+        element.appendChild(head);
+        return element;
+      };
+      /** Etiketli alan: kontrolün üstünde kalıcı adı durur. */
+      const drawerField = (labelText, control, wide) => {
+        const label = $el('label', { class: wide ? 'drawer-field drawer-field-wide' : 'drawer-field' });
+        label.append($el('span', { class:'drawer-field-label' }, labelText), control);
+        return label;
+      };
+      /** Onay kutusu satırı: başlık + tek satır açıklama. */
+      const drawerToggle = (titleText, input, hint) => {
+        const label = $el('label', { class:'drawer-toggle' });
+        const text = $el('span', { class:'drawer-toggle-text' });
+        text.appendChild($el('span', { class:'drawer-toggle-title' }, titleText));
+        if (hint) text.appendChild($el('small', {}, hint));
+        label.append(input, text);
+        return label;
+      };
+      const shortAddress = value => { try { const parsed = new URL(value); return parsed.host + parsed.pathname; } catch { return String(value); } };
       filterDrawerPanel.append(filterDrawerHeader, tools); filterDrawerBackdrop.appendChild(filterDrawerPanel); galleryPane.appendChild(filterDrawerBackdrop);
       let drawerCloseTimer = null;
       const openDrawer = () => {
         clearTimeout(drawerCloseTimer); filterDrawerBackdrop.hidden = false; openFilterDrawer.setAttribute('aria-expanded','true');
-        (window.requestAnimationFrame || (callback => setTimeout(callback, 16)))(() => { filterDrawerBackdrop.classList.add('is-open'); render(); });
-        closeFilterDrawer.focus({ preventScroll:true });
+        (window.requestAnimationFrame || (callback => setTimeout(callback, 16)))(() => { filterDrawerBackdrop.classList.add('is-open'); render(); query.focus({ preventScroll:true }); });
       };
       const closeDrawer = () => {
         filterDrawerBackdrop.classList.remove('is-open'); clearTimeout(drawerCloseTimer);
@@ -177,6 +229,7 @@
       filterDrawerBackdrop.onclick = event => { if (event.target === filterDrawerBackdrop) closeDrawer(); };
       filterDrawerPanel.onkeydown = event => {
         if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); closeDrawer(); return; }
+        if (event.key === '/' && !/^(INPUT|SELECT|TEXTAREA)$/.test(event.target?.tagName || '')) { event.preventDefault(); query.focus({ preventScroll:true }); return; }
         if (event.key !== 'Tab') return;
         const focusable = [...filterDrawerPanel.querySelectorAll('button:not(:disabled),input:not(:disabled),select:not(:disabled),textarea:not(:disabled),[tabindex]:not([tabindex="-1"])')].filter(node => node.getClientRects().length);
         if (!focusable.length) { event.preventDefault(); return; }
@@ -185,14 +238,21 @@
         else if (!event.shiftKey && (event.target === last || !filterDrawerPanel.contains(event.target))) { event.preventDefault(); first.focus(); }
         event.stopPropagation();
       };
-      const row = $el('div', { class: 'toolbar' });
-      const query = $el('input', { placeholder: 'URL veya alan adı ara', 'aria-label': 'URL veya alan adı ara' });
+
+      // --- 1) Arama -------------------------------------------------------
+      const searchSection = drawerSection('Ara', 'URL veya alan adı');
+      const query = $el('input', { type:'search', placeholder:'ör. manzara veya example.org', 'aria-label':'URL veya alan adı ara' });
+      searchSection.appendChild(drawerField('URL veya alan adı', query, true));
+      tools.appendChild(searchSection);
+
+      // --- 2) Filtreler ---------------------------------------------------
+      const filterSection = drawerSection('Filtreler', 'Yalnızca görünümü daraltır');
+      const filterGrid = $el('div', { class:'drawer-grid' });
       const format = $el('select', { 'aria-label': 'Dosya türü' });
       for (const [value, name] of [['','Tüm türler'],['jpg','JPG'],['png','PNG'],['webp','WebP'],['gif','GIF'],['avif','AVIF'],['svg','SVG'],['unknown','Diğer / bilinmiyor']]) format.appendChild($el('option', { value }, name));
       const order = $el('select', { 'aria-label': 'Sıralama' });
       for (const [value, name] of [['page','Sayfa sırası'],['url','URL sırası'],['area','Görsel boyutu'],['bytes','Dosya boyutu']]) order.appendChild($el('option', { value }, name));
-      row.append(query, format, order); tools.appendChild(row);
-      const articleFilters = $el('div', { class:'toolbar filter-drawer-filters' });
+      filterGrid.append(drawerField('Dosya türü', format), drawerField('Sıralama', order));
       const articleUrlFilter = $el('select', { 'aria-label':'Ana içeriğe göre filtrele' });
       articleUrlFilter.appendChild($el('option', { value:'' }, 'Tüm içerik bağlantıları'));
       const articleChoices = new Map();
@@ -203,55 +263,58 @@
       }
       const sortedArticleChoices = [...articleChoices].sort((a,b) => a[0].localeCompare(b[0]));
       for (const [articleUrl] of sortedArticleChoices) {
-        let address = articleUrl; try { const parsed = new URL(articleUrl); address = parsed.host + parsed.pathname; } catch {}
-        articleUrlFilter.appendChild($el('option', { value:articleUrl, title:articleUrl }, address));
+        articleUrlFilter.appendChild($el('option', { value:articleUrl, title:articleUrl }, shortAddress(articleUrl)));
       }
       const topicFilter = $el('select', { 'aria-label':'Konu başlığına göre filtrele' });
       topicFilter.appendChild($el('option', { value:'' }, 'Tüm konu başlıkları'));
       const topicChoices = new Set([...articleChoices.values(), ...images.flatMap(image => [image.topic, ...(image.topics || [])])].filter(Boolean));
       for (const topic of [...topicChoices].sort((a,b) => a.localeCompare(b, 'tr'))) topicFilter.appendChild($el('option', { value:topic }, topic));
-      articleFilters.append(articleUrlFilter, topicFilter); tools.appendChild(articleFilters);
-      const updateArticleFilters = () => {
-        const active = !!(articleUrlFilter.value || topicFilter.value);
-        openFilterDrawer.classList.toggle('filter-active', active);
-        openFilterDrawer.setAttribute('aria-label', active ? 'Görsel filtreleri; içerik filtresi etkin' : 'Görselleri filtrele ve seç');
-      };
-      articleUrlFilter.onchange = () => {
-        const topic = articleChoices.get(articleUrlFilter.value) || '';
-        topicFilter.value = [...topicChoices].includes(topic) ? topic : '';
-        updateArticleFilters(); grid.scrollTop = 0; render();
-      };
-      topicFilter.onchange = () => {
-        const topic = topicFilter.value;
-        articleUrlFilter.value = topic ? (sortedArticleChoices.find(([, title]) => title === topic)?.[0] || '') : '';
-        updateArticleFilters(); grid.scrollTop = 0; render();
-      };
-      const row2 = $el('div', { class: 'toolbar' });
-      const minW = $el('input', { type: 'number', min: 0, placeholder: 'Min. genişlik', 'aria-label': 'Filtre minimum genişlik' });
-      const minH = $el('input', { type: 'number', min: 0, placeholder: 'Min. yükseklik', 'aria-label': 'Filtre minimum yükseklik' });
+      filterGrid.append(drawerField('Ana içerik', articleUrlFilter, true), drawerField('Konu başlığı', topicFilter, true));
+      const minW = $el('input', { type: 'number', min: 0, placeholder: 'ör. 800', 'aria-label': 'Filtre minimum genişlik' });
+      const minH = $el('input', { type: 'number', min: 0, placeholder: 'ör. 600', 'aria-label': 'Filtre minimum yükseklik' });
+      filterGrid.append(drawerField('Min. genişlik (px)', minW), drawerField('Min. yükseklik (px)', minH));
       const ratio = $el('select', { 'aria-label': 'En boy oranı' });
       for (const [value, name] of [['','Tüm oranlar'],['landscape','Yatay'],['portrait','Dikey'],['square','Kareye yakın'],['unknown','Oran bilinmiyor']]) ratio.appendChild($el('option', { value }, name));
       const known = $el('select', { 'aria-label': 'Boyutu bilinmeyenler' });
       for (const [value, name] of [['include','Bilinmeyenleri göster'],['exclude','Bilinmeyenleri gizle'],['only','Yalnız bilinmeyenler']]) known.appendChild($el('option', { value }, name));
-      row2.append(minW, minH, ratio, known);
-      const advancedFilters = $el('div', { class:'filter-drawer-extra' }); advancedFilters.appendChild(row2); tools.appendChild(advancedFilters);
-      const sizeRow = $el('div', { class: 'toolbar' });
-      const minMB = $el('input', { type: 'number', min: 0, step: '0.1', placeholder: 'Min. dosya boyutu (MB)', 'aria-label': 'Minimum dosya boyutu MB' });
-      const maxMB = $el('input', { type: 'number', min: 0, step: '0.1', placeholder: 'Maks. dosya boyutu (MB)', 'aria-label': 'Maksimum dosya boyutu MB' });
-      sizeRow.append(minMB, maxMB); advancedFilters.appendChild(sizeRow);
-      const row3 = $el('div', { class: 'toolbar' });
-      const selectAll = $el('button', { type: 'button', class: 'secondary' }, 'Filtredekileri seç');
-      const selectNone = $el('button', { type: 'button', class: 'secondary' }, 'Filtredekileri kaldır');
-      const slideshowLaunch = $el('button', { type: 'button', class: 'secondary' }, '▶ Slayt gösterisi');
-      const previews = $el('input', { type: 'checkbox', checked: true });
-      const previewLabel = $el('label', { class: 'compact' }); previewLabel.append(previews, $el('span', {}, 'Önizlemeleri yükle'));
-      row3.append(selectAll, selectNone, slideshowLaunch, previewLabel); tools.appendChild(row3);
-      // ---------------------------------------------------------------------
-      // Toplu seçim kısayolları: "tümünü seç" çoğu zaman istenen şey değil.
-      // Kullanıcı belirli bir sayfanın / alan adının / formatın görsellerini
-      // seçebilsin. Her işlem etkilenecek sayıyı önce bildirir (yanlışlıkla
-      // binlerce görsel seçmeyi önler).
-      // ---------------------------------------------------------------------
+      filterGrid.append(drawerField('En-boy oranı', ratio), drawerField('Boyut bilgisi', known));
+      const minMB = $el('input', { type: 'number', min: 0, step: '0.1', placeholder: 'ör. 0.5', 'aria-label': 'Minimum dosya boyutu MB' });
+      const maxMB = $el('input', { type: 'number', min: 0, step: '0.1', placeholder: 'ör. 20', 'aria-label': 'Maksimum dosya boyutu MB' });
+      filterGrid.append(drawerField('Min. dosya boyutu (MB)', minMB), drawerField('Maks. dosya boyutu (MB)', maxMB));
+      const reverseToggle = $el('input', { type: 'checkbox', checked: viewPrefs.reverse });
+      const reverseRow = $el('div', { class:'drawer-field drawer-field-wide' });
+      reverseRow.appendChild(drawerToggle('Sıralamayı ters çevir', reverseToggle, 'Liste son sıradan başlar'));
+      filterGrid.appendChild(reverseRow);
+      filterSection.appendChild(filterGrid);
+      tools.appendChild(filterSection);
+
+      // --- 3) Görünüm -----------------------------------------------------
+      // Kullanıcı isteği: resimlerin altındaki açıklamalar gizlenebilsin ve
+      // ızgara sütun sayısı ayarlanabilsin. Bu tercihler filtre değildir;
+      // oturumlar arası saklanır (VIEW_PREFS_KEY).
+      const viewSection = drawerSection('Görünüm', 'Galeri yerleşimi');
+      const captionsToggle = $el('input', { type: 'checkbox', checked: viewPrefs.captions });
+      viewSection.appendChild(drawerToggle('Resim altı açıklamalarını göster', captionsToggle, 'Dosya adı, ölçü, tür ve durum satırı'));
+      const columnsSelect = $el('select', { 'aria-label':'Izgara sütun sayısı' });
+      for (const [value, name] of [['0','Otomatik (genişliğe göre)'],['1','1 sütun'],['2','2 sütun'],['3','3 sütun'],['4','4 sütun'],['5','5 sütun'],['6','6 sütun']]) columnsSelect.appendChild($el('option', { value }, name));
+      columnsSelect.value = String(viewPrefs.columns);
+      viewSection.appendChild(drawerField('Izgara sütun sayısı', columnsSelect));
+      const fitSelect = $el('select', { 'aria-label':'Küçük resim görünümü' });
+      for (const [value, name] of [['contain','Tamamı görünsün (sığdır)'],['cover','Kartı doldur (kırp)']]) fitSelect.appendChild($el('option', { value }, name));
+      fitSelect.value = viewPrefs.fit;
+      viewSection.appendChild(drawerField('Küçük resim görünümü', fitSelect, true));
+      const onlySelectedToggle = $el('input', { type: 'checkbox', checked: viewPrefs.onlySelected });
+      viewSection.appendChild(drawerToggle('Yalnız seçili görselleri göster', onlySelectedToggle, 'Seçimi kaldırılan görseller galeriden çıkar'));
+      const previews = $el('input', { type: 'checkbox', checked: viewPrefs.previews });
+      viewSection.appendChild(drawerToggle('Önizlemeleri yükle', previews, 'Kapalıyken yalnız bilgiler listelenir; sayfa daha hızlı kalır'));
+      tools.appendChild(viewSection);
+
+      // --- 4) Toplu seçim -------------------------------------------------
+      // "Tümünü seç" çoğu zaman istenen şey değil. Kullanıcı belirli bir
+      // sayfanın / alan adının / formatın görsellerini seçebilsin; her işlem
+      // etkilenecek sayıyı önce bildirir (yanlışlıkla binlerce görsel seçmeyi
+      // önler).
+      const bulkSection = drawerSection('Toplu seçim', 'Sayfa / alan adı / format');
       const bulkRow = $el('div', { class: 'toolbar bulk-row' });
       const bulkPage = $el('select', { 'aria-label': 'Sayfaya göre seçim' });
       const bulkHost = $el('select', { 'aria-label': 'Alan adına göre seçim' });
@@ -304,8 +367,27 @@
       bulkToggle.onclick = () => runBulk(false);
       bulkAdd.onclick = () => runBulk(true);
       bulkRow.append(bulkPage, bulkHost, bulkFormat, bulkToggle, bulkAdd);
-      tools.append(bulkRow, bulkCount);
-      const explanation = $el('p', { class: 'muted' }, 'Filtreler yalnızca görünümü değiştirir; ZIP ve dışa aktarım filtre dışında kalanlar dâhil tüm seçili görselleri kullanır. Bilinmeyen dosya boyutları aralık filtresinde korunur. Önizleme, görsel sunucularına yeni istek gönderebilir.'); tools.appendChild(explanation);
+      bulkSection.append(bulkRow, bulkCount);
+      tools.appendChild(bulkSection);
+
+      // --- 5) İşlemler ----------------------------------------------------
+      const actionSection = drawerSection('İşlemler', 'Filtrelenen küme üzerinde');
+      const row3 = $el('div', { class: 'toolbar drawer-actions' });
+      const selectAll = $el('button', { type: 'button', class: 'secondary' }, 'Filtredekileri seç');
+      const selectNone = $el('button', { type: 'button', class: 'secondary' }, 'Filtredekileri kaldır');
+      const slideshowLaunch = $el('button', { type: 'button', class: 'secondary drawer-action-wide' }, '▶ Slayt gösterisi');
+      row3.append(selectAll, selectNone, slideshowLaunch);
+      const resetFilters = $el('button', { type: 'button', class: 'secondary drawer-reset' }, '↺ Filtreleri sıfırla');
+      // NOT: `primary` sınıfı bilinçli olarak kullanılmaz; ZIP sekmesindeki
+      // asıl birincil düğme ile karışmaması için ayrı bir sınıf var.
+      const applyAndClose = $el('button', { type: 'button', class: 'drawer-apply' }, 'Sonuçları gör');
+      const footerRow = $el('div', { class: 'toolbar drawer-footer-actions' });
+      footerRow.append(resetFilters, applyAndClose);
+      actionSection.append(row3, footerRow);
+      tools.appendChild(actionSection);
+
+      const explanation = $el('p', { class: 'muted drawer-note' }, 'Filtreler yalnızca görünümü değiştirir; ZIP ve dışa aktarım filtre dışında kalanlar dâhil tüm seçili görselleri kullanır. Bilinmeyen dosya boyutları aralık filtresinde korunur. Önizleme, görsel sunucularına yeni istek gönderebilir.');
+      tools.appendChild(explanation);
       const grid = $el('div', { class: 'gallery', role: 'region', tabindex: 0, 'aria-label': 'Görsel galerisi' }); galleryPane.appendChild(grid);
       const gridNote = d.subtitle;
       const outputHeading = $el('div', { class: 'output-heading' });
@@ -435,6 +517,7 @@
         const q = query.value.trim().toLowerCase(), articleQuery = articleUrlFilter.value, topicQuery = topicFilter.value, mw = Number(minW.value) || 0, mh = Number(minH.value) || 0;
         const list = images.filter(img => {
           const missing = !img.width || !img.height;
+          if (viewPrefs.onlySelected && !img.selected) return false;
           if (q && !img.url.toLowerCase().includes(q)) return false;
           if (articleQuery && ![img.articleUrl, ...(img.articleUrls || [])].filter(Boolean).includes(articleQuery)) return false;
           if (topicQuery && ![img.topic, ...(img.topics || [])].filter(Boolean).includes(topicQuery)) return false;
@@ -454,6 +537,7 @@
         if (order.value === 'url') list.sort((a,b) => a.url.localeCompare(b.url));
         if (order.value === 'area') list.sort((a,b) => b.width*b.height-a.width*a.height);
         if (order.value === 'bytes') list.sort((a,b) => (b.bytes||0)-(a.bytes||0));
+        if (viewPrefs.reverse) list.reverse();
         return list;
       }
       const selection = () => {
@@ -465,6 +549,41 @@
       };
       const VIRTUAL_CARD_HEIGHT = 320, VIRTUAL_OVERSCAN_ROWS = 2;
       let galleryRenderPending = false, cachedFilteredList = null, cachedSelectionList = null;
+      // ---------------------------------------------------------------------
+      // Çekmece durumu: etkin filtre rozetleri + başlıktaki canlı sayaç.
+      // Her filtre değişiminde çağrılır; rozete tıklamak o filtreyi tek
+      // hamlede kaldırır. Sayaç, kullanıcının filtrenin kaç görsel bıraktığını
+      // çekmeceyi kapatmadan görmesini sağlar.
+      // ---------------------------------------------------------------------
+      const selectedText = (select, fallback) => select.selectedOptions?.[0]?.textContent || fallback;
+      const activeFilterChips = () => [
+        { active: !!query.value.trim(), label: `Arama: “${query.value.trim()}”`, clear: () => { query.value = ''; } },
+        { active: !!format.value, label: `Tür: ${selectedText(format, format.value)}`, clear: () => { format.value = ''; } },
+        { active: !!articleUrlFilter.value, label: `İçerik: ${shortAddress(articleUrlFilter.value)}`, clear: () => { articleUrlFilter.value = ''; } },
+        { active: !!topicFilter.value, label: `Konu: ${topicFilter.value}`, clear: () => { topicFilter.value = ''; } },
+        { active: (Number(minW.value) || 0) > 0, label: `≥ ${minW.value} px genişlik`, clear: () => { minW.value = ''; } },
+        { active: (Number(minH.value) || 0) > 0, label: `≥ ${minH.value} px yükseklik`, clear: () => { minH.value = ''; } },
+        { active: !!ratio.value, label: `Oran: ${selectedText(ratio, ratio.value)}`, clear: () => { ratio.value = ''; } },
+        { active: known.value !== 'include', label: `Boyut: ${selectedText(known, known.value)}`, clear: () => { known.value = 'include'; } },
+        { active: (Number(minMB.value) || 0) > 0, label: `≥ ${minMB.value} MB`, clear: () => { minMB.value = ''; } },
+        { active: (Number(maxMB.value) || 0) > 0, label: `≤ ${maxMB.value} MB`, clear: () => { maxMB.value = ''; } },
+        { active: viewPrefs.onlySelected, label: 'Yalnız seçili görseller', clear: () => { viewPrefs.onlySelected = false; onlySelectedToggle.checked = false; saveViewPrefs(); } },
+      ];
+      function syncDrawerSummary() {
+        const active = activeFilterChips().filter(item => item.active);
+        chips.replaceChildren();
+        chips.hidden = !active.length;
+        for (const item of active) {
+          const chip = $el('button', { type: 'button', class: 'drawer-chip', title: `${item.label} filtresini kaldır` });
+          chip.append($el('span', { class: 'drawer-chip-text' }, item.label), $el('span', { class: 'drawer-chip-x', 'aria-hidden': 'true' }, '×'));
+          chip.onclick = () => { item.clear(); grid.scrollTop = 0; render(); };
+          chips.appendChild(chip);
+        }
+        const shown = Array.isArray(cachedFilteredList) ? cachedFilteredList.length : images.length;
+        drawerSubtitle.textContent = `${shown} / ${images.length} görsel · ${active.length ? `${active.length} etkin filtre` : 'filtre yok'}`;
+        openFilterDrawer.classList.toggle('filter-active', active.length > 0);
+        openFilterDrawer.setAttribute('aria-label', active.length ? `Görsel filtreleri; ${active.length} filtre etkin` : 'Görselleri filtrele ve seç');
+      }
       function render(refreshData = true) {
         // Toplu seçim seçenekleri görsel listesine göre tazelenir; böylece
         // yeni tarama veya filtre sonrası sayaçlar güncel kalır.
@@ -485,7 +604,18 @@
         const viewportWidth = Number(window.innerWidth) || 1280;
         const mobileLayout = viewportWidth <= 600, columnGap = mobileLayout ? 9 : 15, minCardWidth = mobileLayout ? 160 : 220;
         const gridWidth = Number(grid.clientWidth) || Math.max(minCardWidth, viewportWidth - 56);
-        const columns = mobileLayout ? 2 : Math.max(1, Math.floor((gridWidth + columnGap) / (minCardWidth + columnGap)));
+        const autoColumns = mobileLayout ? 2 : Math.max(1, Math.floor((gridWidth + columnGap) / (minCardWidth + columnGap)));
+        // Kullanıcı sütun sayısını seçtiyse o geçerli; ancak kartlar 120 px'in
+        // altına sıkıştırılmaz (okunamaz ızgara üretilmez). Izgara şablonu
+        // burada hesaplanan sayıyla birebir aynı olmalı; sanallaştırma satır
+        // hesabı CSS'ten bağımsız yürüyor.
+        const maxUsefulColumns = Math.max(1, Math.floor((gridWidth + columnGap) / (120 + columnGap)));
+        const columns = viewPrefs.columns ? Math.min(viewPrefs.columns, maxUsefulColumns) : autoColumns;
+        const gridTemplate = `repeat(${columns}, minmax(0, 1fr))`;
+        if (grid.style.gridTemplateColumns !== gridTemplate) grid.style.gridTemplateColumns = gridTemplate;
+        const captionsMode = viewPrefs.captions ? 'on' : 'off';
+        if (grid.dataset.captions !== captionsMode) grid.dataset.captions = captionsMode;
+        if (grid.dataset.fit !== viewPrefs.fit) grid.dataset.fit = viewPrefs.fit;
         const rowPitch = VIRTUAL_CARD_HEIGHT + columnGap, totalRows = Math.ceil(list.length / columns);
         const firstRow = Math.min(totalRows, Math.floor(savedScrollTop / rowPitch));
         const visibleRows = Math.max(1, Math.ceil(((Number(grid.clientHeight) || 480) + columnGap) / rowPitch));
@@ -523,6 +653,7 @@
         grid.scrollTop = savedScrollTop;
         gridNote.hidden = false;
         gridNote.textContent = `${list.length} eşleşme · ${endIndex - startIndex} kart etkin DOM penceresinde; tüm sonuçlar sanallaştırılmış galeride kaydırılabilir.`;
+        if (refreshData) syncDrawerSummary();
       }
       let galleryClosed = false;
       const scheduleGalleryRender = () => {
@@ -854,8 +985,36 @@
         closeButton.focus({preventScroll:true}); refreshList(true); showControls();
       }
       slideshowLaunch.onclick = () => { const list=filtered(), selected=selection().filter(item=>list.includes(item)); openSlideshow(list, selected[0] || list[0], selected.length>0); };
-      for (const control of [query, format, order, minW, minH, minMB, maxMB, ratio, known]) control.addEventListener('input', () => { grid.scrollTop = 0; render(); });
-      previews.addEventListener('input', render);
+      // --- Çekmece olayları ---------------------------------------------------
+      // Filtre değişimi listeyi baştan çizer; görünüm tercihleri kalıcıdır.
+      const refreshGallery = () => { grid.scrollTop = 0; render(); };
+      for (const control of [query, format, order, minW, minH, minMB, maxMB, ratio, known]) control.addEventListener('input', refreshGallery);
+      articleUrlFilter.onchange = () => {
+        const topic = articleChoices.get(articleUrlFilter.value) || '';
+        topicFilter.value = [...topicChoices].includes(topic) ? topic : '';
+        refreshGallery();
+      };
+      topicFilter.onchange = () => {
+        const topic = topicFilter.value;
+        articleUrlFilter.value = topic ? (sortedArticleChoices.find(([, title]) => title === topic)?.[0] || '') : '';
+        refreshGallery();
+      };
+      reverseToggle.addEventListener('input', () => { viewPrefs.reverse = reverseToggle.checked; saveViewPrefs(); refreshGallery(); });
+      captionsToggle.addEventListener('input', () => { viewPrefs.captions = captionsToggle.checked; saveViewPrefs(); render(); });
+      columnsSelect.addEventListener('input', () => { viewPrefs.columns = Math.min(6, Math.max(0, Math.floor(Number(columnsSelect.value) || 0))); saveViewPrefs(); refreshGallery(); });
+      fitSelect.addEventListener('input', () => { viewPrefs.fit = fitSelect.value === 'cover' ? 'cover' : 'contain'; saveViewPrefs(); render(); });
+      onlySelectedToggle.addEventListener('input', () => { viewPrefs.onlySelected = onlySelectedToggle.checked; saveViewPrefs(); refreshGallery(); });
+      previews.addEventListener('input', () => { viewPrefs.previews = previews.checked; saveViewPrefs(); render(); });
+      resetFilters.onclick = () => {
+        for (const control of [query, minW, minH, minMB, maxMB]) control.value = '';
+        format.value = ''; order.value = 'page'; ratio.value = ''; known.value = 'include';
+        articleUrlFilter.value = ''; topicFilter.value = '';
+        bulkPage.value = ''; bulkHost.value = ''; bulkFormat.value = ''; bulkCount.textContent = '';
+        viewPrefs.reverse = false; reverseToggle.checked = false;
+        viewPrefs.onlySelected = false; onlySelectedToggle.checked = false;
+        saveViewPrefs(); grid.scrollTop = 0; render();
+      };
+      applyAndClose.onclick = closeDrawer;
       selectAll.onclick = () => { filtered().forEach(i => { i.selected = true; }); render(); scheduleSave(); };
       selectNone.onclick = () => { filtered().forEach(i => { i.selected = false; }); render(); scheduleSave(); };
       // Galeri varsayılan sekme. Bu noktadan önce activateTab çağrılamaz:

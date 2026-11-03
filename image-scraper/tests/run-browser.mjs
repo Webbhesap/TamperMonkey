@@ -943,6 +943,183 @@ if (only('Yedekleme')) {
 }
 
 // ---------------------------------------------------------------------------
+// Filtre çekmecesi v2: eşit ağırlıklı satırlar yerine başlıklı bölümler,
+// canlı sonuç sayacı, tek tıkla kaldırılan filtre rozetleri ve galeri görünüm
+// ayarları (resim altı açıklamaları, ızgara sütun sayısı, küçük resim
+// görünümü). Görünüm tercihleri oturumlar arası saklanır.
+if (only('Filtre çekmecesi')) {
+  t.test('Filtre çekmecesi: bölümler, canlı sayaç, rozetler ve görünüm ayarları');
+  const page = await openApp('/basic/');
+  await page.setViewport({ width: 1280, height: 860 });
+  await setStorage(page, { isp_config: JSON.stringify({ MIN_WIDTH: 0, MIN_HEIGHT: 0 }) });
+  await runScan(page);
+  await page.evaluate(() => document.getElementById('__image_scraper_v4__').shadowRoot.querySelector('.filter-open-button').click());
+  await new Promise(resolve => setTimeout(resolve, 350));
+
+  const structure = await page.evaluate(() => {
+    const root = document.getElementById('__image_scraper_v4__').shadowRoot;
+    const body = root.querySelector('.filter-drawer-body');
+    const fields = [...body.querySelectorAll('.drawer-field')];
+    return {
+      sections: [...body.querySelectorAll('.drawer-section h4')].map(n => n.textContent),
+      subtitle: root.querySelector('.drawer-subtitle')?.textContent || '',
+      unlabeledFields: fields.filter(field => !(field.querySelector('.drawer-field-label')?.textContent || '').trim()
+        && !field.querySelector('.drawer-toggle')).length,
+      chipsHidden: root.querySelector('.drawer-chips')?.hidden === true,
+      toggleCount: root.querySelectorAll('.drawer-toggle').length,
+      hasReset: !!root.querySelector('.drawer-reset'),
+      hasApply: !!root.querySelector('.drawer-apply'),
+      drawerWidth: Math.round(root.querySelector('.filter-drawer-panel').getBoundingClientRect().width),
+    };
+  });
+  t.equal(structure.sections, ['Ara', 'Filtreler', 'Görünüm', 'Toplu seçim', 'İşlemler'], 'Çekmece bölüm başlıkları');
+  t.includes(structure.subtitle, ' / ', 'Başlıkta canlı sayaç yok: ' + structure.subtitle);
+  t.equal(structure.unlabeledFields, 0, 'Etiketsiz alan var');
+  t.ok(structure.chipsHidden, 'Filtre yokken rozet şeridi gizli değil');
+  t.ok(structure.toggleCount >= 3, `Görünüm anahtarı sayısı beklenen altında: ${structure.toggleCount}`);
+  t.ok(structure.hasReset && structure.hasApply, 'Sıfırla / Sonuçları gör düğmeleri yok');
+
+  // --- Resim altı açıklamaları ---------------------------------------------
+  const captionsOff = await page.evaluate(() => {
+    const root = document.getElementById('__image_scraper_v4__').shadowRoot;
+    const input = [...root.querySelectorAll('.drawer-toggle')].find(l => l.textContent.includes('açıklama')).querySelector('input');
+    input.click();
+    const grid = root.querySelector('.gallery');
+    return {
+      mode: grid.dataset.captions,
+      metaVisible: (root.querySelector('.image-card .meta')?.getClientRects().length || 0) > 0,
+      thumb: Math.round(root.querySelector('.image-card .thumb-wrap').getBoundingClientRect().height),
+      card: Math.round(root.querySelector('.image-card').getBoundingClientRect().height),
+      stored: JSON.parse(window.GM_getValue('isp_view_prefs_v1', '{}')),
+    };
+  });
+  t.equal(captionsOff.mode, 'off', 'Açıklama gizleme galeriye uygulanmadı');
+  t.ok(!captionsOff.metaVisible, 'Açıklamalar gizlenmedi');
+  t.ok(captionsOff.card - captionsOff.thumb <= 4, `Küçük resim kartı doldurmuyor: kart ${captionsOff.card}, resim ${captionsOff.thumb}`);
+  t.equal(captionsOff.stored.captions, false, 'Açıklama tercihi saklanmadı');
+  const captionsOn = await page.evaluate(() => {
+    const root = document.getElementById('__image_scraper_v4__').shadowRoot;
+    const input = [...root.querySelectorAll('.drawer-toggle')].find(l => l.textContent.includes('açıklama')).querySelector('input');
+    input.click();
+    return { mode: root.querySelector('.gallery').dataset.captions, metaVisible: (root.querySelector('.image-card .meta')?.getClientRects().length || 0) > 0 };
+  });
+  t.equal(captionsOn.mode, 'on', 'Açıklamalar geri açılmadı');
+  t.ok(captionsOn.metaVisible, 'Açıklamalar geri gelmedi');
+
+  // --- Izgara sütun sayısı -------------------------------------------------
+  const columns = await page.evaluate(() => {
+    const root = document.getElementById('__image_scraper_v4__').shadowRoot;
+    const select = root.querySelector('[aria-label="Izgara sütun sayısı"]');
+    const read = () => getComputedStyle(root.querySelector('.gallery')).gridTemplateColumns.split(' ').length;
+    const auto = read();
+    select.value = '4'; select.dispatchEvent(new Event('input', { bubbles: true }));
+    const four = read();
+    select.value = '2'; select.dispatchEvent(new Event('input', { bubbles: true }));
+    const two = read();
+    // Sanallaştırma satır hesabı sütun sayısıyla uyumlu kalmalı: kartlar
+    // ızgarayı taşırmamalı ve alt boşluk şeridi bırakmamalı.
+    const grid = root.querySelector('.gallery');
+    const cards = [...grid.querySelectorAll('.image-card')].map(c => c.getBoundingClientRect());
+    const gridBox = grid.getBoundingClientRect();
+    return {
+      auto, four, two,
+      perRow: Math.max(1, new Set(cards.map(c => Math.round(c.top))).size === 0 ? 1 : cards.filter(c => Math.round(c.top) === Math.round(cards[0].top)).length),
+      overflow: cards.some(c => c.right > gridBox.right + 1),
+      stored: JSON.parse(window.GM_getValue('isp_view_prefs_v1', '{}')).columns,
+    };
+  });
+  t.ok(columns.auto >= 2, `Otomatik sütun sayısı beklenmedik: ${columns.auto}`);
+  t.equal(columns.four, 4, '4 sütun seçimi uygulanmadı');
+  t.equal(columns.two, 2, '2 sütun seçimi uygulanmadı');
+  t.equal(columns.perRow, 2, `Sütun sayısı ile kart sayısı uyuşmuyor: satırda ${columns.perRow} kart`);
+  t.ok(!columns.overflow, 'Kartlar ızgarayı taşırıyor');
+  t.equal(columns.stored, 2, 'Sütun tercihi saklanmadı');
+
+  // --- Küçük resim görünümü -------------------------------------------------
+  const fit = await page.evaluate(() => {
+    const root = document.getElementById('__image_scraper_v4__').shadowRoot;
+    const select = root.querySelector('[aria-label="Küçük resim görünümü"]');
+    select.value = 'cover'; select.dispatchEvent(new Event('input', { bubbles: true }));
+    const cover = getComputedStyle(root.querySelector('.image-card img')).objectFit;
+    select.value = 'contain'; select.dispatchEvent(new Event('input', { bubbles: true }));
+    const contain = getComputedStyle(root.querySelector('.image-card img')).objectFit;
+    return { cover, contain, mode: root.querySelector('.gallery').dataset.fit };
+  });
+  t.equal(fit.cover, 'cover', 'Kırpma görünümü uygulanmadı');
+  t.equal(fit.contain, 'contain', 'Sığdırma görünümüne dönülmedi');
+
+  // --- Etkin filtre rozetleri ----------------------------------------------
+  const chips = await page.evaluate(() => {
+    const root = document.getElementById('__image_scraper_v4__').shadowRoot;
+    const width = root.querySelector('[aria-label="Filtre minimum genişlik"]');
+    width.value = '200'; width.dispatchEvent(new Event('input', { bubbles: true }));
+    const format = root.querySelector('[aria-label="Dosya türü"]');
+    format.value = 'png'; format.dispatchEvent(new Event('input', { bubbles: true }));
+    const after = [...root.querySelectorAll('.drawer-chip-text')].map(n => n.textContent);
+    const subtitle = root.querySelector('.drawer-subtitle').textContent;
+    const chip = [...root.querySelectorAll('.drawer-chip')].find(c => c.textContent.includes('genişlik'));
+    chip.click();
+    return {
+      after, subtitle,
+      afterClear: [...root.querySelectorAll('.drawer-chip-text')].map(n => n.textContent),
+      widthValue: width.value,
+      subtitleAfter: root.querySelector('.drawer-subtitle').textContent,
+      buttonActive: root.querySelector('.filter-open-button').classList.contains('filter-active'),
+      chipsVisible: root.querySelector('.drawer-chips')?.hidden === false,
+    };
+  });
+  t.equal(chips.after.length, 2, `Rozet sayısı beklenmedik: ${chips.after.join(' | ')}`);
+  t.includes(chips.subtitle, '2 etkin filtre', 'Sayaç etkin filtre sayısını göstermiyor: ' + chips.subtitle);
+  t.equal(chips.afterClear.length, 1, 'Rozete tıklamak filtreyi kaldırmadı');
+  t.equal(chips.widthValue, '', 'Rozete tıklamak alanı temizlemedi');
+  t.includes(chips.subtitleAfter, '1 etkin filtre', 'Sayaç rozet kaldırılınca güncellenmedi: ' + chips.subtitleAfter);
+  t.ok(chips.buttonActive, 'Etkin filtre varken düğme vurgulanmıyor');
+  t.ok(chips.chipsVisible, 'Etkin filtre varken rozet şeridi görünmüyor');
+
+  // --- Sıfırlama ------------------------------------------------------------
+  const reset = await page.evaluate(() => {
+    const root = document.getElementById('__image_scraper_v4__').shadowRoot;
+    root.querySelector('.drawer-reset').click();
+    return {
+      chips: root.querySelectorAll('.drawer-chip').length,
+      format: root.querySelector('[aria-label="Dosya türü"]').value,
+      subtitle: root.querySelector('.drawer-subtitle').textContent,
+      columns: root.querySelector('[aria-label="Izgara sütun sayısı"]').value,
+      active: root.querySelector('.filter-open-button').classList.contains('filter-active'),
+    };
+  });
+  t.equal(reset.chips, 0, 'Sıfırlama rozetleri temizlemedi');
+  t.equal(reset.format, '', 'Sıfırlama filtreleri temizlemedi');
+  t.includes(reset.subtitle, 'filtre yok', 'Sıfırlama sayacı güncellemedi: ' + reset.subtitle);
+  t.equal(reset.columns, '2', 'Sıfırlama görünüm tercihini de değiştirdi');
+  t.ok(!reset.active, 'Sıfırlama sonrası düğme hâlâ etkin görünüyor');
+
+  // --- Yalnız seçili görseller ----------------------------------------------
+  const onlySelected = await page.evaluate(() => {
+    const root = document.getElementById('__image_scraper_v4__').shadowRoot;
+    const box = [...root.querySelectorAll('.drawer-toggle')].find(l => l.textContent.includes('Yalnız seçili')).querySelector('input');
+    box.click();
+    const selectNone = [...root.querySelectorAll('.toolbar button')].find(b => b.textContent.includes('kaldır') && b.textContent.includes('Filtredekileri'));
+    selectNone.click();
+    const empty = { cards: root.querySelectorAll('.image-card').length, subtitle: root.querySelector('.drawer-subtitle').textContent };
+    box.click();
+    const restored = root.querySelectorAll('.image-card').length;
+    return { empty, restored };
+  });
+  t.equal(onlySelected.empty.cards, 0, 'Seçim yokken "yalnız seçili" görünümü kart gösteriyor');
+  t.includes(onlySelected.empty.subtitle, '0 /', 'Sayaç sıfır eşleşmeyi göstermiyor: ' + onlySelected.empty.subtitle);
+  t.ok(onlySelected.restored > 0, 'Seçim filtresi kapatılınca kartlar geri gelmedi');
+
+  // --- Kalıcılık ------------------------------------------------------------
+  const prefs = await page.evaluate(() => JSON.parse(window.GM_getValue('isp_view_prefs_v1', '{}')));
+  t.equal(prefs.captions, true, 'Açıklama tercihi güncel değil');
+  t.equal(prefs.columns, 2, 'Sütun tercihi güncel değil');
+  t.equal(prefs.fit, 'contain', 'Küçük resim görünümü güncel değil');
+  t.equal(page.__pageErrors.length, 0, 'Filtre çekmecesinde sayfa hatası: ' + page.__pageErrors[0]);
+  await page.close();
+}
+
+// ---------------------------------------------------------------------------
 if (only('Slayt gösterisi')) {
   t.test('Slayt gösterisi aç/kapat ve gezinme');
   const page = await openApp('/basic/');

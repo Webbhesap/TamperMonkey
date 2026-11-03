@@ -71,8 +71,9 @@ Böylece burada kalan her madde gerçekten "yapılacak iş" listesidir.
   hassas/imzalı parametre olabileceğini açıkça uyar.
 - **ZIP içi klasörleme:** Dosyaları kaynak sayfaya, alan adına veya ad
   şablonuna göre klasörle; güvenli ve çakışmasız adlandırmayı koru.
-- **Kaynak sayfaya göre hızlı filtre ve seçim:** Görselleri tarandıkları
-  sayfaya göre grupla; tek sayfanın görsellerini seç, dışla veya ayrı ZIP yap.
+- **Kaynak sayfaya göre gruplama ve ayrı ZIP:** Sayfa/alan adı/format bazında
+  *seçim* hazır (çekmecedeki toplu seçim). Kalan iş: galeride bu ölçütlere göre
+  gruplanmış bölüm başlıkları ve tek grubu ayrı ZIP'e çıkarma.
 - **Yan yana görsel karşılaştırıcı:** İki görseli eş zamanlı yakınlaştırma ve
   kaydırmayla karşılaştır; benzer gruplarda en iyi kopyayı seçmeye yardımcı olur.
 - **Kaydedilebilir iş akışı profilleri:** Site profillerinden ayrı olarak
