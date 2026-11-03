@@ -511,6 +511,51 @@ if (only('Performans')) {
 }
 
 // ---------------------------------------------------------------------------
+// Görsel regresyon: galeri sekmesinin altında boş şerit kalmamalı ve
+// "Görselleri filtrele ve seç" düğmesi galerinin üstünde ayrı bir araç
+// çubuğunda değil, sekme çubuğunun sağ ucunda durmalı.
+// Bu iki hata bir kez ürün olarak bildirildi; testlerle kilitlendi.
+if (only('Galeri düzeni')) {
+  t.test('Galeri düzeni: alt boşluk yok, filtre düğmesi sekme çubuğunda');
+  const page = await openApp('/basic/');
+  await page.setViewport({ width: 1280, height: 800 });
+  await setStorage(page, { isp_config: JSON.stringify({ MIN_WIDTH: 0, MIN_HEIGHT: 0 }) });
+  await runScan(page);
+  // Sanallaştırma/yerleşim bir sonraki karede oturur.
+  await new Promise(resolve => setTimeout(resolve, 600));
+  const geo = await page.evaluate(() => {
+    const root = document.getElementById('__image_scraper_v4__').shadowRoot;
+    const box = node => { if (!node) return null; const r = node.getBoundingClientRect(); return { top: Math.round(r.top), bottom: Math.round(r.bottom), right: Math.round(r.right), height: Math.round(r.height) }; };
+    const workspace = root.querySelector('.result-workspace');
+    const grid = root.querySelector('.gallery');
+    const tabs = root.querySelector('.result-tabs');
+    const button = root.querySelector('.filter-open-button');
+    return {
+      isGallery: workspace?.classList.contains('is-gallery') === true,
+      legacyBar: !!root.querySelector('.gallery-tools-bar'),
+      workspace: box(workspace), grid: box(grid), tabs: box(tabs), button: box(button),
+      buttonHidden: button?.hidden === true,
+      buttonInsideTabs: !!button && !!tabs && tabs.contains(button),
+      viewportHeight: innerHeight,
+    };
+  });
+  t.ok(geo.isGallery, 'Galeri sekmesi is-gallery sınıfını almamış');
+  t.ok(!geo.legacyBar, '.gallery-tools-bar hâlâ DOM’da (galeri üstünde ayrı araç çubuğu)');
+  t.ok(geo.buttonInsideTabs, 'Filtre düğmesi sekme çubuğunun içinde değil');
+  t.ok(!geo.buttonHidden, 'Filtre düğmesi galeri sekmesinde gizli');
+  // Boş şerit: panel altı görünümün altına taşmamalı ve galeri panelin
+  // dibine kadar inmeli (arada kullanılmayan boşluk kalmamalı).
+  t.ok(geo.workspace.bottom <= geo.viewportHeight + 1, `Panel görünümden taşıyor: ${geo.workspace.bottom} > ${geo.viewportHeight}`);
+  t.ok(geo.workspace.bottom >= geo.viewportHeight - 1, `Panel görünümün altına inmeli: ${geo.workspace.bottom} < ${geo.viewportHeight}`);
+  t.ok(geo.grid !== null && geo.grid.bottom >= geo.workspace.bottom - 24, `Galeri altında boşluk var: grid ${geo.grid?.bottom}, panel ${geo.workspace.bottom}`);
+  // Sağa yaslı: düğmenin sağ kenarı sekme çubuğunun sağ kenarına yakın olmalı.
+  t.ok(geo.button.right <= geo.tabs.right, `Filtre düğmesi sekme çubuğunu aşıyor: ${geo.button.right} > ${geo.tabs.right}`);
+  t.ok(geo.tabs.right - geo.button.right < 80, `Filtre düğmesi sağa yaslı değil: fark ${geo.tabs.right - geo.button.right} px`);
+  t.equal(page.__pageErrors.length, 0, 'Galeri düzeninde sayfa hatası: ' + page.__pageErrors[0]);
+  await page.close();
+}
+
+// ---------------------------------------------------------------------------
 if (only('Yedekleme')) {
   t.test('Ayar yedeği dışa/içe aktarma');
   const page = await openApp('/selector/');
