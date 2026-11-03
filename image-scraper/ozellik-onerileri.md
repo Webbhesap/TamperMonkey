@@ -8,8 +8,9 @@ Kural: bir madde uygulandığında bu dosyadan **çıkarılır** ve
 Böylece burada kalan her madde gerçekten "yapılacak iş" listesidir.
 
 > Son gözden geçirme: 2026-11-03. Derin tarama sayaçları, güvenli devam
-> kaydı, içerik bağlantısı puanlaması, içerik sayfalama sınırı ve içerik bazlı
-> tarama özeti uygulandı; maddeler bu dosyadan çıkarıldı.
+> kaydı, içerik bağlantısı puanlaması, içerik sayfalama sınırı, içerik bazlı
+> tarama özeti, hiyerarşik sayfa önizlemesi ve kaynak sayfa grupları
+> uygulandı; maddeler bu dosyadan çıkarıldı.
 
 ---
 
@@ -35,9 +36,6 @@ Böylece burada kalan her madde gerçekten "yapılacak iş" listesidir.
 
 ## Yeni özellikler
 
-- **Hiyerarşik kategori → içerik → sayfa önizlemesi:** Taramadan önce
-  kategorileri, makaleleri ve alt sayfaları ağaç görünümünde listele;
-  makale/sayfa seçimi ve içerik başına sayfa sınırı sun.
 - **Konu bazlı tarama ve koleksiyon:** İçerik başlığını konu kabul edip konu
   başına görsel sayısını göster; seçilen konuları ayrı koleksiyon/ZIP yap.
 - **İçerik kartı seçici yardımcısı:** Sayfadaki olası makale kartlarını
@@ -49,9 +47,6 @@ Böylece burada kalan her madde gerçekten "yapılacak iş" listesidir.
 - **Benzer görselleri ZIP öncesi gözden geçirme:** Algısal benzerlik
   gruplarını yan yana göster, kullanıcı tutulacakları seçsin. Otomatik silme
   varsayılan olmasın.
-- **Kaynak sayfaya göre gruplama ve ayrı ZIP:** Sayfa/alan adı/format bazında
-  *seçim* hazır (çekmecedeki toplu seçim). Kalan iş: galeride bu ölçütlere göre
-  gruplanmış bölüm başlıkları ve tek grubu ayrı ZIP'e çıkarma.
 - **Yan yana görsel karşılaştırıcı:** İki görseli eş zamanlı yakınlaştırma ve
   kaydırmayla karşılaştır; benzer gruplarda en iyi kopyayı seçmeye yardımcı olur.
 - **Kalıcı favoriler ve koleksiyonlar:** Görselleri oturumlar arasında

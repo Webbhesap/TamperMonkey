@@ -8,6 +8,50 @@ eklenir. Amaç: hangi işin bittiğini tek bakışta görmek.
 
 ---
 
+## 2026-11-03 — Hiyerarşik önizleme ve kaynak sayfa grupları
+
+### Hiyerarşik kategori → içerik → sayfa önizlemesi
+- Sayfa kuyruğu önizlemesi derin taramada **ağaç** olarak çizilir: grup başlığı
+  (`Kategori sayfaları: N · içerik: M · seçilebilir sayfa: K`), ardından her
+  içerik için bir kart; kartta içerik başlığı, `seçili/toplam` sayacı, içerik
+  kutusu ve **sayfa sınırı** alanı, altında seçilebilir alt sayfalar
+  (`Alt sayfa 2 · İçerik alt sayfası 2: …`) bulunur.
+- **İçerik başına sayfa sınırı:** `0` tümünü seçer, `N` yalnız ilk N alt
+  sayfayı işaretler; grup kutusu yarı seçimde `indeterminate` olur, alttaki
+  canlı satır (`2 / 3 sayfa seçili`) seçimi özetler.
+- Sayfa alınamayan içerikler `⚠` ile ve "bu içerikten sayfa alınamadı" notuyla
+  görünür; elle eklenen URL'ler "Diğer sayfalar (elle eklendi)" grubunda durur.
+- Seçim, `Tümünü seç/kaldır` ve `Seçilenleri tara` ile aynı davranışı korur;
+  seçilmeyen sayfalar taranmaz.
+- Doğrulama (Chromium): düz sayfalama önizlemesi eski listeyi korur; derin
+  taramada 2 grup (2 ve 1 alt sayfa), sınır `1` yapılınca `2 / 3 seçili`,
+  tarama sonucu 2 sayfa.
+
+### Kaynak sayfa/içerik gruplaması ve tek grubu ZIP
+- **Yeni görünüm tercihi `groupBy`** (`isp_view_prefs_v1`): `none`,
+  `page` (kaynak sayfa) veya `article` (içerik/konu). Çekmecedeki
+  "Galeri gruplaması" alanından seçilir, oturumlar arası saklanır.
+- Galeri gruplandığında her bölümün başında **grup kartı** çizilir: tür
+  (`KAYNAK SAYFA` / `İÇERİK`), başlık (sayfa adresi veya konu), `N görsel ·
+  M seçili`, `Grubu seç` ve `🗜️ Grubu ZIP yap` düğmeleri, kaynak bağlantısı.
+  Kart ızgaranın 1. sütunundan başlar; satır planı grup kartı + görseller
+  olarak hesaplandığı için sanallaştırma ve kaydırma bozulmaz.
+- **Tek grubu ayrı ZIP:** grup düğmesi o grubun görsellerini geçici kapsam
+  (`zipOverride`) olarak ZIP akışına verir; seçim durumu değişmez, kaynak
+  sınırı ön kontrolü ve parça/manifest üretimi aynen çalışır. İndirme
+  sekmesinde `📦 Grup ZIP: …` kapsam satırı görünür, `manifest.json` içine
+  `kapsam: "grup"` ve `grup` etiketi yazılır.
+- Doğrulama (Chromium): içerik gruplaması 2, kaynak sayfa gruplaması 3 bölüm;
+  ilk grubun ZIP'i yalnız o grubun görsellerini + manifesti içeriyor,
+  `manifest.kapsam === 'grup'`, 0 sayfa hatası.
+
+### Testler
+- Yeni tarayıcı grupları: **Hiyerarşik önizleme** (11 kontur),
+  **Grup ZIP** (12 kontur).
+- Toplam: statik 48/48, loader 56/56, tarayıcı **281/281**, ESLint temiz.
+
+---
+
 ## 2026-11-03 — Derin tarama görünürlüğü ve dayanıklılığı
 
 Derin tarama (kategori → içerik → alt sayfa) akışının sayaçları, sınır

@@ -695,16 +695,83 @@
       const status = $el('p', { class: 'muted' }, `Sorgu parametrelerinin değerleri varsayılan olarak gizlenir; bazı URL’ler imzalı/özel bilgi içerebilir.${warningCount ? ` Keşif sırasında ${warningCount} uyarı oluştu; ayrıntı URL’leri gizlendi.` : ''}${(plan.blocked || []).length ? ` Engellenen sayfa: ${(plan.blocked || []).length}.` : ''}`);
       const revealQuery = $el('input', { type: 'checkbox', 'aria-label': 'Tam sorgu parametrelerini göster' });
       const revealLabel = $el('label', { class: 'compact' }); revealLabel.append(revealQuery, $el('span', {}, 'Tam URL sorgu parametrelerini göster'));
-      const queueItems = [...plan.pages], checks = [];
-      const renderQueue = () => {
-        list.replaceChildren(); checks.length = 0;
-        for (const [i, item] of queueItems.entries()) {
-          const row = $el('label', { class: 'page-queue-item' });
-          const check = $el('input', { type: 'checkbox', checked: item.selected !== false, 'aria-label': `Sayfa ${i + 1} seç` });
-          check.onchange = () => { item.selected = check.checked; };
-          const info = $el('span'); info.append($el('span', {}, `${i + 1}. ${redactQueueUrl(item.url, revealQuery.checked)}`), $el('small', { class: 'muted' }, item.reason || 'Kullanıcı ekledi'));
-          row.append(check, info); list.appendChild(row); checks.push(check);
+      const queueItems = plan.pages.map(item => ({ ...item, selected: item.selected !== false }));
+      const boxes = new Map();
+      // Derin taramada kuyruk "kategori → içerik → alt sayfa" ağacı olarak
+      // gösterilir: her içerik bir başlık, altında seçilebilir sayfaları.
+      const deepTree = queueItems.some(item => item.articleUrl);
+      const treeGroups = [];
+      const selectedSummary = $el('p', { class: 'muted page-tree-selected', role: 'status', 'aria-live': 'polite' });
+      const setSelected = (item, value) => { item.selected = value; const box = boxes.get(item); if (box) box.checked = value; };
+      const syncCounts = () => {
+        for (const group of treeGroups) {
+          const selectedCount = group.items.filter(item => item.selected).length;
+          group.count.textContent = group.items.length ? `${selectedCount}/${group.items.length} sayfa seçili` : '⚠ sayfa alınamadı';
+          group.check.checked = !!group.items.length && selectedCount === group.items.length;
+          group.check.indeterminate = selectedCount > 0 && selectedCount < group.items.length;
+          if (group.limit) group.limit.disabled = !group.items.length;
         }
+        selectedSummary.textContent = `${queueItems.filter(item => item.selected).length} / ${queueItems.length} sayfa seçili`;
+      };
+      const renderQueue = () => {
+        list.replaceChildren(); boxes.clear(); treeGroups.length = 0;
+        if (!deepTree) {
+          for (const [i, item] of queueItems.entries()) {
+            const row = $el('label', { class: 'page-queue-item' });
+            const check = $el('input', { type: 'checkbox', checked: item.selected, 'aria-label': `Sayfa ${i + 1} seç` });
+            check.onchange = () => { item.selected = check.checked; syncCounts(); };
+            const info = $el('span'); info.append($el('span', {}, `${i + 1}. ${redactQueueUrl(item.url, revealQuery.checked)}`), $el('small', { class: 'muted' }, item.reason || 'Kullanıcı ekledi'));
+            row.append(check, info); list.appendChild(row); boxes.set(item, check);
+          }
+          syncCounts();
+          return;
+        }
+        const byArticle = new Map();
+        for (const article of plan.stats?.articles || []) if (article?.url) byArticle.set(article.url, { url: article.url, topic: article.topic || '', items: [], error: article.error || '' });
+        for (const item of queueItems) {
+          const key = item.articleUrl || '';
+          if (!byArticle.has(key)) byArticle.set(key, { url: key, topic: key ? (item.topic || '') : 'Diğer sayfalar (elle eklendi)', items: [], error: '' });
+          byArticle.get(key).items.push(item);
+        }
+        list.appendChild($el('p', { class: 'muted page-tree-head' },
+          `Kategori sayfaları: ${plan.stats?.categoryPages || 0} · içerik: ${byArticle.size} · seçilebilir sayfa: ${queueItems.length}`));
+        for (const article of byArticle.values()) {
+          const groupNode = $el('div', { class: 'page-tree-group', 'data-article': article.url || '' });
+          const head = $el('div', { class: 'page-tree-head' });
+          const check = $el('input', { type: 'checkbox', checked: article.items.length > 0 && article.items.every(item => item.selected), 'aria-label': `İçeriği seç: ${article.topic || article.url}` });
+          check.onchange = () => { for (const item of article.items) setSelected(item, check.checked); syncCounts(); };
+          const title = $el('span', { class: 'page-tree-title' }, article.topic || article.url || 'İçerik');
+          const count = $el('span', { class: 'page-tree-count' });
+          const limit = article.items.length
+            ? $el('input', { type: 'number', min: '0', max: String(article.items.length), value: '0', 'aria-label': `“${article.topic || article.url}” için sayfa sınırı (0 = tümü)` })
+            : null;
+          if (limit) {
+            // İçerik başına sayfa sınırı: 0 tümünü seçer, N yalnız ilk N sayfayı.
+            limit.onchange = () => {
+              const n = Math.max(0, Math.min(article.items.length, Math.floor(Number(limit.value) || 0)));
+              limit.value = String(n);
+              article.items.forEach((item, index) => setSelected(item, n === 0 ? true : index < n));
+              syncCounts();
+            };
+          }
+          const limitWrap = $el('label', { class: 'compact page-tree-limit' });
+          limitWrap.append($el('span', {}, 'sayfa sınırı'), limit || $el('span', { class: 'muted' }, '—'));
+          head.append(check, title, count, limitWrap);
+          groupNode.appendChild(head);
+          if (article.error) groupNode.appendChild($el('p', { class: 'muted page-tree-error' }, `⚠ ${article.error}`));
+          else if (!article.items.length) groupNode.appendChild($el('p', { class: 'muted page-tree-error' }, '⚠ Bu içerikten sayfa alınamadı; yeniden taramak için içeriği ayrı açın.'));
+          for (const [index, item] of article.items.entries()) {
+            const row = $el('label', { class: 'page-queue-item page-tree-page' });
+            const pageCheck = $el('input', { type: 'checkbox', checked: item.selected, 'aria-label': `${article.topic || 'İçerik'} alt sayfa ${index + 1} seç` });
+            pageCheck.onchange = () => { item.selected = pageCheck.checked; syncCounts(); };
+            const info = $el('span');
+            info.append($el('span', {}, `${index + 1}. ${redactQueueUrl(item.url, revealQuery.checked)}`), $el('small', { class: 'muted' }, item.articlePage ? `Alt sayfa ${item.articlePage} · ${item.reason || ''}` : (item.reason || 'Kullanıcı ekledi')));
+            row.append(pageCheck, info); groupNode.appendChild(row); boxes.set(item, pageCheck);
+          }
+          list.appendChild(groupNode);
+          treeGroups.push({ items: article.items, check, count, limit });
+        }
+        syncCounts();
       };
       renderQueue(); revealQuery.onchange = renderQueue;
       const addRow = $el('div', { class: 'actions' });
@@ -723,15 +790,15 @@
       const selectActions = $el('div', { class: 'actions' });
       const all = $el('button', { type: 'button', class: 'secondary' }, 'Tümünü seç');
       const none = $el('button', { type: 'button', class: 'secondary' }, 'Tümünü kaldır');
-      all.onclick = () => checks.forEach((x, i) => { x.checked = true; queueItems[i].selected = true; });
-      none.onclick = () => checks.forEach((x, i) => { x.checked = false; queueItems[i].selected = false; });
+      all.onclick = () => { for (const item of queueItems) setSelected(item, true); syncCounts(); };
+      none.onclick = () => { for (const item of queueItems) setSelected(item, false); syncCounts(); };
       selectActions.append(all, none);
       const actions = $el('div', { class: 'actions' });
       const cancel = $el('button', { type: 'button', class: 'secondary' }, 'İptal');
       const start = $el('button', { type: 'button', class: 'primary' }, 'Seçilenleri tara');
       actions.append(cancel, start);
       if (discoveryNote) d.box.appendChild(discoveryNote);
-      d.box.append(status, revealLabel, addRow, list, selectActions, actions);
+      d.box.append(status, revealLabel, addRow, list, selectedSummary, selectActions, actions);
       let settled = false;
       const finish = value => { if (settled) return; settled = true; signal.removeEventListener('abort', abort); d.closeDialog(); resolve(value); };
       const abort = () => finish(null);
@@ -739,7 +806,7 @@
       d.setOnClose(() => { if (!settled) { settled = true; signal.removeEventListener('abort', abort); resolve(null); } });
       cancel.onclick = () => finish(null);
       start.onclick = () => {
-        const selected = queueItems.filter((_, i) => checks[i].checked);
+        const selected = queueItems.filter(item => item.selected);
         if (!selected.length) { status.textContent = 'En az bir sayfa seç.'; return; }
         finish(selected);
       };

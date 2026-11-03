@@ -366,6 +366,114 @@ if (only('Derin tarama sınırları')) {
 }
 
 // ---------------------------------------------------------------------------
+// Hiyerarşik önizleme: kategori → içerik → alt sayfa ağacı, içerik başına
+// sayfa sınırı ve seçime göre tarama.
+if (only('Hiyerarşik önizleme')) {
+  t.test('Derin tarama: hiyerarşik kategori → içerik → sayfa önizlemesi');
+  const page = await openApp('/category/');
+  await setStorage(page, { isp_config: JSON.stringify({ DEEP_CRAWL: true, MAX_PAGES: 1, MAX_ARTICLES: 2, ARTICLE_MAX_PAGES: 2, PREVIEW_PAGE_QUEUE: true, MIN_WIDTH: 0, MIN_HEIGHT: 0 }) });
+  await clickInUI(page, '.launch [data-isp-action="scan"]');
+  await waitText(page, 'sayfa sınırı');
+  const tree = await page.evaluate(() => {
+    const root = document.getElementById('__image_scraper_v4__').shadowRoot;
+    return {
+      groups: [...root.querySelectorAll('.page-tree-group')].map(group => ({
+        topic: group.querySelector('.page-tree-title')?.textContent || '',
+        pages: group.querySelectorAll('.page-queue-item').length,
+      })),
+      head: root.querySelector('.page-tree-head')?.textContent || '',
+      selected: root.querySelector('.page-tree-selected')?.textContent || '',
+    };
+  });
+  t.equal(tree.groups.length, 2, 'Her içerik için bir grup olmalı');
+  t.includes(tree.groups[0].topic, 'İçerik 1', 'Grup başlığı içerik konusunu göstermeli');
+  t.equal(tree.groups[0].pages, 2, 'İlk içerik iki alt sayfa göstermeli');
+  t.equal(tree.groups[1].pages, 1, 'İkinci içerik bir alt sayfa göstermeli');
+  t.includes(tree.head, 'Kategori sayfaları: 1', 'Kategori sayfası sayısı ağaç başlığında');
+  t.includes(tree.head, 'içerik: 2', 'İçerik sayısı ağaç başlığında');
+  t.includes(tree.selected, '3 / 3', 'Başlangıçta tüm sayfalar seçili');
+  const limited = await page.evaluate(() => {
+    const root = document.getElementById('__image_scraper_v4__').shadowRoot;
+    const input = root.querySelector('.page-tree-group .page-tree-limit input');
+    input.value = '1';
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+    return {
+      selected: root.querySelector('.page-tree-selected')?.textContent || '',
+      checked: root.querySelectorAll('.page-tree-group .page-queue-item input:checked').length,
+      count: root.querySelector('.page-tree-group .page-tree-count')?.textContent || '',
+    };
+  });
+  t.includes(limited.selected, '2 / 3', 'İçerik sayfa sınırı seçimi daraltmalı');
+  t.equal(limited.checked, 2, 'Sınır sonrası işaretli sayfa sayısı');
+  t.includes(limited.count, '1/2', 'Grup sayacı sınırı yansıtmalı');
+  await page.evaluate(() => {
+    const root = document.getElementById('__image_scraper_v4__').shadowRoot;
+    [...root.querySelectorAll('button')].find(button => button.textContent.includes('Seçilenleri tara')).click();
+  });
+  await page.waitForFunction(() => [...document.getElementById('__image_scraper_v4__').shadowRoot.querySelectorAll('.overlay h2')].some(node => node.textContent === 'Tarama sonuçları'), { timeout: 60000 });
+  const metrics = await page.evaluate(() => [...document.getElementById('__image_scraper_v4__').shadowRoot.querySelectorAll('.metric-value')].map(node => node.textContent.trim()));
+  t.equal(metrics[1], '2', 'Sınır seçimiyle yalnız iki sayfa taranmalı');
+  await page.close();
+}
+
+// ---------------------------------------------------------------------------
+// Kaynak sayfaya göre gruplama: galeride bölüm kartları ve tek grubu ayrı ZIP.
+if (only('Grup ZIP')) {
+  t.test('Galeri gruplaması: kaynak sayfa/içerik grupları ve tek grubu ZIP');
+  const page = await openApp('/category/');
+  await setStorage(page, { isp_config: JSON.stringify({ DEEP_CRAWL: true, MAX_PAGES: 1, MAX_ARTICLES: 2, ARTICLE_MAX_PAGES: 2, MIN_WIDTH: 0, MIN_HEIGHT: 0, ZIP_MANIFEST: true }) });
+  await runScan(page, { timeout: 90000 });
+  const setGrouping = mode => page.evaluate(value => {
+    const root = document.getElementById('__image_scraper_v4__').shadowRoot;
+    const select = [...root.querySelectorAll('select')].find(node => node.getAttribute('aria-label') === 'Galeri gruplaması');
+    select.value = value;
+    select.dispatchEvent(new Event('input', { bubbles: true }));
+  }, mode);
+  await setGrouping('article');
+  const articleGroups = await page.evaluate(() => [...document.getElementById('__image_scraper_v4__').shadowRoot.querySelectorAll('.gallery-group-card')].map(card => card.textContent));
+  t.equal(articleGroups.length, 2, 'İçerik gruplaması iki bölüm üretmeli');
+  t.includes(articleGroups[0] || '', 'İÇERİK', 'Grup kartı türü içerik olmalı');
+  t.includes(articleGroups[0] || '', '2 görsel', 'Grup kartı görsel sayısını göstermeli');
+  await setGrouping('page');
+  const pageGroups = await page.evaluate(() => [...document.getElementById('__image_scraper_v4__').shadowRoot.querySelectorAll('.gallery-group-card')].map(card => card.textContent));
+  t.equal(pageGroups.length, 3, 'Kaynak sayfa gruplaması üç bölüm üretmeli');
+  t.includes(pageGroups[0] || '', 'KAYNAK SAYFA', 'Grup kartı türü kaynak sayfa olmalı');
+  // İlk grubu ayrı ZIP yap.
+  const groupSize = await page.evaluate(() => {
+    const root = document.getElementById('__image_scraper_v4__').shadowRoot;
+    const card = root.querySelector('.gallery-group-card');
+    const count = Number((card.querySelector('.group-card-count')?.textContent || '').match(/^(\d+)/)?.[1] || 0);
+    [...card.querySelectorAll('button')].find(button => button.textContent.includes('Grubu ZIP')).click();
+    return count;
+  });
+  t.ok(groupSize > 0, 'Grup kartı görsel sayısını bildirmeli');
+  await page.waitForFunction(() => {
+    const root = document.getElementById('__image_scraper_v4__').shadowRoot;
+    const pane = [...root.querySelectorAll('.result-pane')][2];
+    const status = pane?.querySelector('.status')?.textContent || '';
+    return !!pane?.querySelector('a.download-link') || status.startsWith('⛔') || status.startsWith('❌');
+  }, { timeout: 90000, polling: 100 });
+  const groupZip = await page.evaluate(async () => {
+    const root = document.getElementById('__image_scraper_v4__').shadowRoot;
+    const pane = [...root.querySelectorAll('.result-pane')][2];
+    const link = pane.querySelector('a.download-link');
+    const scope = pane.querySelector('.zip-scope-status')?.textContent || '';
+    if (!link) return { error: true, scope, status: pane.querySelector('.status')?.textContent || '' };
+    const zip = await JSZip.loadAsync(await (await fetch(link.href)).arrayBuffer());
+    const names = Object.keys(zip.files).filter(name => !zip.files[name].dir);
+    const manifestName = names.find(name => name.endsWith('manifest.json'));
+    return { error: false, scope, names, manifest: manifestName ? JSON.parse(await zip.file(manifestName).async('string')) : null };
+  });
+  t.ok(!groupZip.error, 'Grup ZIP üretilemedi: ' + groupZip.status);
+  t.equal(groupZip.names.length, groupSize + 1, 'Grup ZIP yalnız o grubun görsellerini ve manifesti içermeli: ' + groupZip.names.join(', '));
+  t.includes(groupZip.scope, 'Grup ZIP', 'Kapsam bilgisi indirme sekmesinde görünmeli');
+  t.equal(groupZip.manifest?.kapsam, 'grup', 'Manifest kapsamı grup olmalı');
+  t.equal(groupZip.manifest?.dosyalar?.length, groupSize, 'Manifest yalnız grup dosyalarını saymalı');
+  t.equal(page.__pageErrors.length, 0, 'Grup ZIP sırasında sayfa hatası: ' + page.__pageErrors[0]);
+  await page.close();
+}
+
+// ---------------------------------------------------------------------------
 // İçerik bazlı tekrar sayacı: aynı görsel bir içeriğin alt sayfalarında
 // yeniden geçtiğinde özet satırında "tekrar atlandı" olarak görünmeli.
 if (only('İçerik tekrarı')) {
