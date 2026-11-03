@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Image Scraper — GitHub'dan yüklenen alternatif
 // @namespace    https://github.com/Webbhesap/TamperMonkey
-// @version      0.4.1
+// @version      0.4.2
 // @description  Görsel toplayıcı panelini GitHub'daki kaynak dosyalardan yükler. HTML/CSS her açılışta tazelenir.
 // @author       Webbhesap
 // @match        *://*/*
