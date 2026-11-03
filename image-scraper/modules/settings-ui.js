@@ -31,6 +31,82 @@
         d.box.scrollTop = 0;
       };
       for (const [key, tab] of tabButtons) tab.onclick = () => selectSettingsTab(key);
+
+      // ---------------------------------------------------------------------
+      // Ayar arama: 30+ ayar 7 sekmeye dağılmış durumda. Kullanıcı sekme
+      // sekme gezmek yerine yazarak arar; eşleşen ayarın sekmesine atlanır,
+      // satır vurgulanır, eşleşmeyenler soluklaştırılır (gizlenmez; böylece
+      // ayarın hangi bölümde olduğu bağlamı korunur).
+      // ---------------------------------------------------------------------
+      const searchInput = q('settingsSearch'), searchClear = action('settings-search-clear');
+      const searchResult = q('settingsSearchResult');
+      // Türkçe arama: kullanıcı "sablon" yazınca "şablon" da bulunmalı.
+      // Aksan/özel harf katlama (normalize NFKD + birleşik işaret temizliği)
+      // "ç/ğ/ı/ö/ş/ü" → "c/g/i/o/s/u" dönüşümünü sağlar.
+      const fold = value => String(value ?? '')
+        .replace(/[ıİ]/g, 'i').replace(/[şŞ]/g, 's').replace(/[ğĞ]/g, 'g')
+        .normalize('NFKD').replace(/[\u0300-\u036f]/g, '')
+        .toLocaleLowerCase('tr');
+      // Aranabilir etiket: satırın görünen metni + kontrolün name/placeholder
+      // değeri (ör. data-control="filename" aramada "filename" ile de bulunur).
+      const searchRows = [];
+      for (const [key, pane] of settingsPanes) {
+        if (!pane || key === 'records') continue;
+        const section = () => pane.querySelector('.section h3')?.textContent || '';
+        for (const node of pane.querySelectorAll('label, .actions, p.muted')) {
+          if (node.closest('.settings-footer')) continue;
+          const control = node.querySelector('input,select,textarea');
+          const keys = [
+            node.textContent || '',
+            control?.dataset?.control || '',
+            control?.placeholder || '',
+            control?.getAttribute('aria-label') || '',
+          ].join(' ');
+          searchRows.push({ node, pane: key, section: section(), keys: fold(keys) });
+        }
+      }
+      const clearSearch = () => {
+        for (const row of searchRows) { row.node.removeAttribute('data-isp-search-dim'); row.node.removeAttribute('data-isp-search-hit'); }
+        searchResult.hidden = true; searchResult.textContent = '';
+        searchClear.hidden = true;
+      };
+      const runSearch = () => {
+        const term = fold(searchInput.value.trim());
+        if (!term) { clearSearch(); return; }
+        searchClear.hidden = false;
+        const hits = searchRows.filter(row => row.keys.includes(term));
+        for (const row of searchRows) {
+          const hit = hits.includes(row);
+          row.node.toggleAttribute('data-isp-search-hit', hit);
+          row.node.setAttribute('data-isp-search-dim', String(!hit));
+        }
+        if (!hits.length) {
+          searchResult.hidden = false;
+          searchResult.textContent = `“${searchInput.value.trim()}” ile eşleşen ayar yok.`;
+          return;
+        }
+        // İlk eşleşmenin sekmesine geç ve satırı görünür alana getir.
+        selectSettingsTab(hits[0].pane);
+        // Paneller Alpine ile açıldığında ölçüm bir sonraki karede doğru olur.
+        (window.requestAnimationFrame || (callback => setTimeout(callback, 16)))(() => {
+          // NOT: scrollIntoView kullanılmaz — odak arama kutusundayken dialogun
+          // kendisini de kaydırıp başlığı ekrandan çıkarıyordu. Kaydırma
+          // yalnızca dialog gövdesi içinde yapılır (offset ile hesaplanır).
+          const dialogScroll = d.box;
+          const rowBox = hits[0].node.getBoundingClientRect();
+          const dialogBox = dialogScroll.getBoundingClientRect();
+          const delta = rowBox.top - dialogBox.top - dialogBox.height / 2 + rowBox.height / 2;
+          try { dialogScroll.scrollBy({ top: delta, behavior: 'smooth' }); } catch { dialogScroll.scrollTop += delta; }
+        });
+        searchResult.hidden = false;
+        searchResult.textContent = hits.length === 1
+          ? `1 ayar bulundu: ${hits[0].section}`
+          : `${hits.length} ayar bulundu. İlk eşleşme: ${hits[0].section}`;
+      };
+      searchInput.oninput = runSearch;
+      searchInput.onkeydown = event => { if (event.key === 'Escape') { searchInput.value = ''; clearSearch(); event.stopPropagation(); } };
+      searchClear.onclick = () => { searchInput.value = ''; clearSearch(); searchInput.focus(); };
+
       settingsTabs.onkeydown = e => {
         if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
         e.preventDefault();

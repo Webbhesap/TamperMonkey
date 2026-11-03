@@ -556,6 +556,72 @@ if (only('Galeri düzeni')) {
 }
 
 // ---------------------------------------------------------------------------
+// Ayar arama: 30+ ayar 7 sekmeye dağılmış. Arama, sekme değiştirmeden ilgili
+// ayarı bulmalı, o sekmeye atlamalı ve Türkçe karakterleri katlamalı
+// ("sablon" → "şablon").
+if (only('Ayar arama')) {
+  t.test('Ayar arama: sekme atlama, Türkçe katlama, temizleme');
+  const page = await openApp('/basic/');
+  await page.setViewport({ width: 1280, height: 800 });
+  await page.evaluate(() => document.getElementById('__image_scraper_v4__').shadowRoot.querySelector('.launch [data-isp-action="settings"]').click());
+  await page.waitForFunction(() => [...document.getElementById('__image_scraper_v4__').shadowRoot.querySelectorAll('.overlay h2')].some(n => n.textContent === 'Ayarlar'));
+  await new Promise(resolve => setTimeout(resolve, 400));
+
+  const search = term => page.evaluate(value => {
+    const root = document.getElementById('__image_scraper_v4__').shadowRoot;
+    const input = root.querySelector('[data-control="settingsSearch"]');
+    input.value = value; input.dispatchEvent(new Event('input', { bubbles: true }));
+  }, term);
+  const state = () => page.evaluate(() => {
+    const root = document.getElementById('__image_scraper_v4__').shadowRoot;
+    const dialog = root.querySelector('.settings-dialog');
+    const activeTab = [...root.querySelectorAll('.settings-tabs button')].find(b => b.getAttribute('aria-selected') === 'true');
+    return {
+      tab: activeTab?.textContent.trim() || '',
+      hits: root.querySelectorAll('[data-isp-search-hit]').length,
+      dimmed: root.querySelectorAll('[data-isp-search-dim]').length,
+      message: root.querySelector('[data-control="settingsSearchResult"]')?.textContent || '',
+      clearHidden: root.querySelector('[data-action="settings-search-clear"]')?.hidden !== false,
+      dialogHeight: Math.round(dialog.getBoundingClientRect().height),
+      dialogClient: dialog.clientHeight, dialogScroll: dialog.scrollHeight,
+    };
+  });
+
+  // 1) "zip" → ZIP sekmesine atlamalı.
+  await search('zip'); await new Promise(resolve => setTimeout(resolve, 250));
+  const zipState = await state();
+  t.includes(zipState.tab, 'ZIP', `"zip" araması ZIP sekmesine atlamadı: ${zipState.tab}`);
+  t.ok(zipState.hits >= 1, '"zip" araması eşleşme bulamadı');
+  t.ok(!zipState.clearHidden, 'Arama sırasında temizle düğmesi görünmüyor');
+  t.ok(zipState.dimmed > 0, 'Arama sırasında eşleşmeyen satırlar soluklaşmadı');
+
+  // 2) Türkçe katlama: "sablon" → "şablon" bulunmalı.
+  await search('sablon'); await new Promise(resolve => setTimeout(resolve, 250));
+  const folded = await state();
+  t.ok(folded.hits >= 1, '"sablon" araması "şablon" ile eşleşmedi (Türkçe katlama eksik)');
+
+  // 3) Olmayan terim: 0 eşleşme, kullanıcıya açık mesaj.
+  await search('zzzz-yok-boyle-ayar'); await new Promise(resolve => setTimeout(resolve, 250));
+  const none = await state();
+  t.equal(none.hits, 0, 'Olmayan terim için eşleşme bulundu');
+  t.includes(none.message, 'eşleşen ayar yok', 'Eşleşmeyen arama mesajı yok');
+
+  // 4) Diyalog yüksekliği arama boyunca sabit kalmalı (başlık ekrandan çıkmasın).
+  t.equal(zipState.dialogHeight, none.dialogHeight, `Arama diyalog yüksekliğini değiştirdi: ${zipState.dialogHeight} → ${none.dialogHeight}`);
+  t.ok(folded.dialogScroll >= folded.dialogClient, 'Diyalog kaydırma hesabı tutarsız');
+
+  // 5) Temizleme: vurgular kalkmalı.
+  await page.evaluate(() => document.getElementById('__image_scraper_v4__').shadowRoot.querySelector('[data-action="settings-search-clear"]').click());
+  await new Promise(resolve => setTimeout(resolve, 250));
+  const cleared = await state();
+  t.equal(cleared.hits, 0, 'Temizlemeden sonra vurgu kaldı');
+  t.equal(cleared.dimmed, 0, 'Temizlemeden sonra soluklaştırma kaldı');
+  t.ok(cleared.clearHidden, 'Temizlemeden sonra temizle düğmesi gizlenmedi');
+  t.equal(page.__pageErrors.length, 0, 'Ayar aramasında sayfa hatası: ' + page.__pageErrors[0]);
+  await page.close();
+}
+
+// ---------------------------------------------------------------------------
 if (only('Yedekleme')) {
   t.test('Ayar yedeği dışa/içe aktarma');
   const page = await openApp('/selector/');
