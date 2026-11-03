@@ -2,6 +2,13 @@
 (function (global) {
   const modules = global.ImageScraperModules || (global.ImageScraperModules = Object.create(null));
   modules.createNetworkModule = function createNetworkModule(deps) {
+    // Bağımlılık sözleşmesi: eksik bağımlılık ilk kullanımda değil, modül
+    // kurulurken anlaşılır bir hatayla bildirilir (geç ReferenceError yerine).
+    const requireDeps = (label, names) => {
+      const missing = names.filter(name => deps?.[name] === undefined);
+      if (missing.length) throw new Error(`${label} modülü için eksik bağımlılık: ${missing.join(', ')}`);
+    };
+    requireDeps('Ağ', ['location', 'GM_xmlhttpRequest', 'checkAbort', 'abortError', 'isAbort', 'fetchImpl', 'DOMParserImpl']);
     const { location, GM_xmlhttpRequest, checkAbort, abortError, isAbort, fetchImpl, DOMParserImpl } = deps;
     // Cloudflare ara sayfasının başlığı tarayıcı diline göre değişir
     // ("Just a moment...", "Bir dakika lütfen...", "Un momento..."). Tek bir

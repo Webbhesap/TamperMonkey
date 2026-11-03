@@ -79,6 +79,25 @@ for (const [name, factory] of [['zip.js', 'createZipModule'], ['settings-ui.js',
 const factoryCalls = [...files['app.js'].matchAll(/ImageScraperModules\?\.(\w+)/g)].map(m => m[1]);
 t.ok(factoryCalls.length >= 6, `app.js modül fabrikalarını çözemiyor: ${factoryCalls.join(', ')}`);
 
+t.test('Modül bağımlılık sözleşmeleri: eksik bağımlılık kurulum anında bildirilir');
+for (const [file, factory] of [['zip.js', 'createZipModule'], ['settings-ui.js', 'createSettingsUI'],
+  ['page-tools.js', 'createPageTools'], ['network.js', 'createNetworkModule'],
+  ['image-analysis.js', 'createImageAnalysisModule'], ['ui-results.js', 'createResultsUI']]) {
+  const context = vm.createContext({ console, TextEncoder, TextDecoder, URL, Blob, setTimeout, clearTimeout });
+  vm.runInContext(files[`modules/${file}`], context, { filename: file });
+  const create = context.ImageScraperModules?.[factory];
+  if (typeof create !== 'function') { t.ok(false, `${file}: ${factory} kaydı bulunamadı`); continue; }
+  try {
+    create({});
+    t.ok(false, `${file}: eksik bağımlılıklarla modül kuruldu (geç hata riski)`);
+  } catch (error) {
+    // Hata mesajı hem nedeni hem eksik adları içermeli; aksi hâlde kullanıcı
+    // ve geliştirici için geç bir ReferenceError'den farkı kalmaz.
+    t.includes(error.message, 'eksik bağımlılık', `${file}: anlaşılır hata mesajı yok`);
+    t.ok(/eksik bağımlılık: \S/.test(error.message), `${file}: eksik bağımlılık adları listelenmemiş`);
+  }
+}
+
 t.test('Sözdizimsel hata kalıpları yok (kontrolsüz catch, yanlış escape)');
 for (const file of scripts) {
   const src = files[file];

@@ -2,6 +2,13 @@
 (function (global) {
   const modules = global.ImageScraperModules || (global.ImageScraperModules = Object.create(null));
   modules.createSettingsUI = function createSettingsUI(deps) {
+    // Bağımlılık sözleşmesi: eksik bağımlılık ilk kullanımda değil, modül
+    // kurulurken anlaşılır bir hatayla bildirilir (geç ReferenceError yerine).
+    const requireDeps = (label, names) => {
+      const missing = names.filter(name => deps?.[name] === undefined);
+      if (missing.length) throw new Error(`${label} modülü için eksik bağımlılık: ${missing.join(', ')}`);
+    };
+    requireDeps('Ayarlar', ['loadConfig', 'saveConfig', 'dialog', 'cloneTemplate', 'readJSON', '$el', 'saveBlob', 'KEY', 'DEFAULTS', 'EXCLUDED_SITES_KEY', 'readExcludedSites', 'GM_getValue', 'GM_setValue', 'location', 'showStorageManager']);
     const { loadConfig, saveConfig, dialog, cloneTemplate, readJSON, $el, saveBlob, KEY, DEFAULTS, EXCLUDED_SITES_KEY,
       readExcludedSites, normalizeExcludedSite, isExcludedHost, GM_getValue, GM_setValue, location, document,
       showStorageManager } = deps;
@@ -116,22 +123,30 @@
       };
 
       // Bind the static HTML controls to the existing settings model.
-      const values = {
-        max: c.MAX_PAGES, pageMode: c.PAGINATION_MODE, customTpl: c.CUSTOM_PAGINATION_TEMPLATE || DEFAULTS.CUSTOM_PAGINATION_TEMPLATE,
-        duplicatePages: c.STOP_DUPLICATE_PAGES, previewPages: c.PREVIEW_PAGE_QUEUE, saveScanProgress: c.SAVE_SCAN_PROGRESS, nextSelector: c.NEXT_SELECTOR,
-        minw: c.MIN_WIDTH, minh: c.MIN_HEIGHT, real: c.CHECK_REAL_SIZE, unknown: c.EXCLUDE_UNKNOWN, dynamic: c.DYNAMIC_SCROLL, steps: c.DYNAMIC_STEPS, timeout: c.TIMEOUT_MS,
-        useSel: c.USE_SELECTOR, selector: c.SELECTOR, skip: c.SKIP_PATTERNS, decode: c.DECODE_URL, useRep: c.USE_REPLACE,
-        replacements: JSON.stringify(c.REPLACEMENTS, null, 2), sourceMode: c.IMAGE_SOURCE_MODE, sourceHosts: c.IMAGE_SOURCE_HOSTS,
-      retryReferer: c.RETRY_REFERER, filename: c.ZIP_FILENAME, concurrent: c.ZIP_CONCURRENT, maxFiles: c.PART_MAX_FILES, maxMB: c.PART_MAX_MB,
-      dedupe: c.DEDUPE_CONTENT, visualGroups: c.GROUP_VISUAL_SIMILARITY, streamZip: c.STREAM_ZIP_TO_DISK, verifyZip: c.VERIFY_ZIP, template: c.NAME_TEMPLATE,
-      deepCrawl: c.DEEP_CRAWL, articleLinkSelector: c.ARTICLE_LINK_SELECTOR, articleTitleSelector: c.ARTICLE_TITLE_SELECTOR,
-      articleNextSelector: c.ARTICLE_NEXT_SELECTOR, articleMaxPages: c.ARTICLE_MAX_PAGES, maxArticles: c.MAX_ARTICLES,
+      // Form alanları tek bir yerden doldurulur; iş akışı profili uygulanınca
+      // da aynı eşleme kullanıldığı için ekran ile ayarlar ayrışmaz.
+      const configToControls = config => ({
+        max: config.MAX_PAGES, pageMode: config.PAGINATION_MODE, customTpl: config.CUSTOM_PAGINATION_TEMPLATE || DEFAULTS.CUSTOM_PAGINATION_TEMPLATE,
+        duplicatePages: config.STOP_DUPLICATE_PAGES, previewPages: config.PREVIEW_PAGE_QUEUE, saveScanProgress: config.SAVE_SCAN_PROGRESS, nextSelector: config.NEXT_SELECTOR,
+        minw: config.MIN_WIDTH, minh: config.MIN_HEIGHT, real: config.CHECK_REAL_SIZE, unknown: config.EXCLUDE_UNKNOWN, dynamic: config.DYNAMIC_SCROLL, steps: config.DYNAMIC_STEPS, timeout: config.TIMEOUT_MS,
+        useSel: config.USE_SELECTOR, selector: config.SELECTOR, skip: config.SKIP_PATTERNS, decode: config.DECODE_URL, useRep: config.USE_REPLACE,
+        replacements: JSON.stringify(config.REPLACEMENTS, null, 2), sourceMode: config.IMAGE_SOURCE_MODE, sourceHosts: config.IMAGE_SOURCE_HOSTS,
+        retryReferer: config.RETRY_REFERER, filename: config.ZIP_FILENAME, concurrent: config.ZIP_CONCURRENT, maxFiles: config.PART_MAX_FILES, maxMB: config.PART_MAX_MB,
+        dedupe: config.DEDUPE_CONTENT, visualGroups: config.GROUP_VISUAL_SIMILARITY, streamZip: config.STREAM_ZIP_TO_DISK, verifyZip: config.VERIFY_ZIP, template: config.NAME_TEMPLATE,
+        zipFolders: config.ZIP_FOLDERS || 'none', zipManifest: config.ZIP_MANIFEST,
+        maxImages: config.MAX_IMAGES, maxTotalMB: config.MAX_TOTAL_MB,
+        deepCrawl: config.DEEP_CRAWL, articleLinkSelector: config.ARTICLE_LINK_SELECTOR, articleTitleSelector: config.ARTICLE_TITLE_SELECTOR,
+        articleNextSelector: config.ARTICLE_NEXT_SELECTOR, articleMaxPages: config.ARTICLE_MAX_PAGES, maxArticles: config.MAX_ARTICLES,
+      });
+      const syncControls = config => {
+        for (const [name, value] of Object.entries(configToControls(config))) {
+          const control = q(name);
+          if (!control) continue;
+          if (control.type === 'checkbox') control.checked = !!value;
+          else control.value = String(value ?? '');
+        }
       };
-      for (const [name, value] of Object.entries(values)) {
-        const control = q(name);
-        if (control.type === 'checkbox') control.checked = !!value;
-        else control.value = String(value ?? '');
-      }
+      syncControls(c);
       const max = q('max'), pageMode = q('pageMode'), customTpl = q('customTpl'), duplicatePages = q('duplicatePages');
       const previewPages = q('previewPages'), saveScanProgress = q('saveScanProgress'), nextSelector = q('nextSelector');
       const minw = q('minw'), minh = q('minh'), real = q('real'), unknown = q('unknown'), dynamic = q('dynamic');
@@ -139,6 +154,7 @@
       const decode = q('decode'), useRep = q('useRep'), replacements = q('replacements'), sourceMode = q('sourceMode'), sourceHosts = q('sourceHosts');
       const retryReferer = q('retryReferer'), filename = q('filename'), concurrent = q('concurrent'), maxFiles = q('maxFiles'), maxMB = q('maxMB');
       const dedupe = q('dedupe'), visualGroups = q('visualGroups'), streamZip = q('streamZip'), verifyZip = q('verifyZip'), template = q('template');
+      const zipFolders = q('zipFolders'), zipManifest = q('zipManifest'), maxImages = q('maxImages'), maxTotalMB = q('maxTotalMB');
       // Dosya adı şablonu önizlemesi: kaydetmeden önce örnek çıktıyı göster,
       // geçersiz karakterleri ve bilinmeyen değişkenleri uyar.
       const templatePreview = q('templatePreview');
@@ -173,6 +189,71 @@
       const deepOnlyControls = [articleLinkSelector, articleTitleSelector, articleNextSelector, articleMaxPages, maxArticles];
       const syncDeepControls = () => deepOnlyControls.forEach(control => { control.disabled = !deepCrawl.checked; });
       deepCrawl.addEventListener('change', syncDeepControls); syncDeepControls();
+
+      // ---------------------------------------------------------------------
+      // İş akışı profilleri: tarama + görsel + ZIP ayarlarını birlikte
+      // uygulayan adlandırılmış kombinasyonlar. Üç hazır profil var; kullanıcı
+      // kayıtlı ayarlarını adlandırıp kendi profilini ekleyebilir.
+      // Profiller site profillerinden ayrıdır ve genel ayarlara uygulanır.
+      // ---------------------------------------------------------------------
+      const WORKFLOW_KEY = 'isp_workflows_v1';
+      const BUILTIN_WORKFLOWS = {
+        'Hızlı tarama': { MAX_PAGES: 1, DYNAMIC_SCROLL: false, CHECK_REAL_SIZE: false, TIMEOUT_MS: 8000, ZIP_CONCURRENT: 2, PART_MAX_MB: 50 },
+        'Düşük bellek': { ZIP_CONCURRENT: 1, PART_MAX_FILES: 100, PART_MAX_MB: 50, STREAM_ZIP_TO_DISK: false, VERIFY_ZIP: false, GROUP_VISUAL_SIMILARITY: false, ZIP_MANIFEST: false },
+        'Yüksek çözünürlük': { MIN_WIDTH: 1200, MIN_HEIGHT: 800, CHECK_REAL_SIZE: true, MAX_PAGES: 5, PART_MAX_MB: 500, ZIP_CONCURRENT: 3 },
+      };
+      const workflowPreset = q('workflowPreset'), workflowName = q('workflowName'), workflowStatus = q('workflowStatus');
+      const readWorkflows = () => {
+        try {
+          const raw = JSON.parse(GM_getValue(WORKFLOW_KEY, '{}') || '{}');
+          return raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+        } catch { return {}; }
+      };
+      const workflowCatalogue = () => ({ ...BUILTIN_WORKFLOWS, ...readWorkflows() });
+      const renderWorkflowOptions = () => {
+        const previous = workflowPreset.value;
+        workflowPreset.replaceChildren($el('option', { value: '' }, 'Profil seç…'));
+        for (const name of Object.keys(BUILTIN_WORKFLOWS)) workflowPreset.appendChild($el('option', { value: name }, `${name} (hazır)`));
+        for (const name of Object.keys(readWorkflows())) workflowPreset.appendChild($el('option', { value: name }, name));
+        workflowPreset.value = [...workflowPreset.options].some(option => option.value === previous) ? previous : '';
+      };
+      renderWorkflowOptions();
+      const applyWorkflow = () => {
+        const name = workflowPreset.value;
+        if (!name) { workflowStatus.textContent = 'Önce listeden bir profil seç.'; return; }
+        const preset = workflowCatalogue()[name];
+        if (!preset || typeof preset !== 'object') { workflowStatus.textContent = 'Profil bulunamadı.'; return; }
+        const merged = { ...loadConfig(), ...preset };
+        saveConfig(merged); syncControls(merged);
+        const siteNote = hasSiteProfile ? ' Bu sitede etkin site profili olduğu için değerler site profili tarafından geçersiz kılınabilir.' : '';
+        workflowStatus.textContent = `✅ "${name}" uygulandı · ${Object.keys(preset).length} ayar güncellendi.${siteNote}`;
+      };
+      const saveWorkflow = () => {
+        const name = workflowName.value.trim();
+        if (!name) { workflowStatus.textContent = 'Profil adı boş olamaz.'; return; }
+        if (name.length > 40) { workflowStatus.textContent = 'Profil adı en fazla 40 karakter olabilir.'; return; }
+        if (BUILTIN_WORKFLOWS[name]) { workflowStatus.textContent = 'Hazır profil adları kullanılamaz; başka bir ad seç.'; return; }
+        const stored = readWorkflows();
+        // Kayıtlı ayarlar profile alınır; formda kaydedilmemiş değişiklik varsa
+        // önce "Kaydet" ile uygulanması gerekir.
+        stored[name] = loadConfig();
+        GM_setValue(WORKFLOW_KEY, JSON.stringify(stored));
+        renderWorkflowOptions(); workflowPreset.value = name; workflowName.value = '';
+        workflowStatus.textContent = `✅ "${name}" profili kaydedildi.`;
+      };
+      const deleteWorkflow = () => {
+        const name = workflowPreset.value;
+        if (!name) { workflowStatus.textContent = 'Silinecek profili seç.'; return; }
+        if (BUILTIN_WORKFLOWS[name]) { workflowStatus.textContent = 'Hazır profiller silinemez.'; return; }
+        const stored = readWorkflows();
+        if (!stored[name]) { workflowStatus.textContent = 'Profil bulunamadı.'; return; }
+        delete stored[name]; GM_setValue(WORKFLOW_KEY, JSON.stringify(stored));
+        renderWorkflowOptions();
+        workflowStatus.textContent = `🗑 "${name}" profili silindi.`;
+      };
+      action('workflow-apply').onclick = applyWorkflow;
+      action('workflow-save').onclick = saveWorkflow;
+      action('workflow-delete').onclick = deleteWorkflow;
 
       const activeProfiles = readJSON('isp_profiles_v1', {});
       const hasSiteProfile = !!(activeProfiles && activeProfiles[location.origin]);
@@ -292,6 +373,8 @@
             DYNAMIC_SCROLL: dynamic.checked, DYNAMIC_STEPS: num(steps, 'Dinamik adım', 0, Number.MAX_SAFE_INTEGER),
             PART_MAX_FILES: num(maxFiles, 'Parça dosya sınırı', 1, 10000), PART_MAX_MB: num(maxMB, 'Parça MB sınırı', 1, 2000),
             DEDUPE_CONTENT: dedupe.checked, GROUP_VISUAL_SIMILARITY: visualGroups.checked, STREAM_ZIP_TO_DISK: streamZip.checked, VERIFY_ZIP: verifyZip.checked, NAME_TEMPLATE: template.value.trim() || DEFAULTS.NAME_TEMPLATE,
+            ZIP_FOLDERS: ['none','host','page'].includes(zipFolders.value) ? zipFolders.value : 'none', ZIP_MANIFEST: zipManifest.checked,
+            MAX_IMAGES: num(maxImages, 'En fazla görsel', 0, 100000), MAX_TOTAL_MB: num(maxTotalMB, 'En fazla toplam boyut', 0, 100000),
             DEEP_CRAWL: deepCrawl.checked, ARTICLE_LINK_SELECTOR: articleLinkSel, ARTICLE_TITLE_SELECTOR: articleTitleSel || DEFAULTS.ARTICLE_TITLE_SELECTOR,
             ARTICLE_NEXT_SELECTOR: articleNextSel, ARTICLE_MAX_PAGES: deepLimit(articleMaxPages, 'İçerik sayfa sınırı', 0, 10000, c.ARTICLE_MAX_PAGES), MAX_ARTICLES: deepLimit(maxArticles, 'İçerik bağlantısı sınırı', 0, 100000, c.MAX_ARTICLES),
           };

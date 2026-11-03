@@ -2,6 +2,13 @@
 (function (global) {
   const modules = global.ImageScraperModules || (global.ImageScraperModules = Object.create(null));
   modules.createImageAnalysisModule = function createImageAnalysisModule(deps) {
+    // Bağımlılık sözleşmesi: eksik bağımlılık ilk kullanımda değil, modül
+    // kurulurken anlaşılır bir hatayla bildirilir (geç ReferenceError yerine).
+    const requireDeps = (label, names) => {
+      const missing = names.filter(name => deps?.[name] === undefined);
+      if (missing.length) throw new Error(`${label} modülü için eksik bağımlılık: ${missing.join(', ')}`);
+    };
+    requireDeps('Görsel analizi', ['document', 'Blob']);
     const { document, Blob, createImageBitmapImpl } = deps;
     async function imageFormat(blob) {
       const b = new Uint8Array(await blob.slice(0, 512).arrayBuffer());

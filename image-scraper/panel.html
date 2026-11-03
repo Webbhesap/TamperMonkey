@@ -29,6 +29,13 @@
       <div class="settings-panels">
         <div role="tabpanel" id="isp-general-panel" aria-labelledby="isp-general-tab" x-show="active === 'general'" x-cloak>
           <section class="section"><h3>Site profili</h3><div data-control="profile-content"><p class="muted" data-control="profile-active" hidden>Site profili etkin.</p><p class="muted" data-control="profile-inactive" hidden>Genel ayarlar kullanılıyor.</p><button type="button" class="secondary" data-action="profile-remove" hidden>Bu site profilini sil</button></div></section>
+          <section class="section"><h3>İş akışı profilleri <span class="help-tip" tabindex="0" data-tooltip="Hazır bir iş akışı tarama, görsel ve ZIP ayarlarını birlikte uygular. Kendi kombinasyonunu adlandırıp kaydedebilirsin; profiller site profillerinden ayrıdır ve genel ayarlara uygulanır." aria-label="İş akışı profilleri hakkında bilgi"></span></h3>
+            <label class="column"><span>Hazır profil</span><select data-control="workflowPreset" aria-label="İş akışı profili"><option value="">Profil seç…</option></select></label>
+            <div class="actions"><button type="button" class="secondary" data-action="workflow-apply">Uygula</button><button type="button" class="secondary" data-action="workflow-delete">Seçili profili sil</button></div>
+            <label class="column"><span>Profil adı <span class="help-tip" tabindex="0" data-tooltip="Kayıtlı ayarların anlık kopyası profile alınır. Formda yaptığın ve henüz kaydetmediğin değişiklikler için önce Ayarları kaydet." aria-label="Profil adı hakkında bilgi"></span></span><input data-control="workflowName" placeholder="ör. Yalnızca PNG, düşük bellek"></label>
+            <div class="actions"><button type="button" class="secondary" data-action="workflow-save">Kayıtlı ayarları profil yap</button></div>
+            <p class="muted" role="status" data-control="workflowStatus"></p>
+          </section>
           <section class="section"><h3>Gizlilik <span class="help-tip" tabindex="0" data-tooltip="Betik giriş bilgilerini veya çerezleri kaydetmez, sayfa formu göndermez ve erişim doğrulamasını aşmaz. Oturum ve görsel verileri yalnızca ilgili kayıt ayarlarıyla saklanır." aria-label="Gizlilik hakkında bilgi"></span></h3>
             <p class="muted">Betik yalnızca senin başlattığın taramalarda sayfaları ve görselleri indirir. Hiçbir veri dışarıya gönderilmez; ayarlar, oturumlar ve görseller tarayıcının userscript deposunda kalır. Tanılama raporu da adres içermez, yalnızca sayısal özet ve hata türleri taşır. Sunucu kurallarına ve telif haklarına uymak kullanıcının sorumluluğundadır.</p>
           </section>
@@ -59,6 +66,11 @@
             <label><span>Zaman aşımı (ms)</span><input data-control="timeout" type="number" min="1000" max="120000"></label>
             <p class="muted">Boyutu ölçülemeyen görseller elenmez; sonuçlarda ? × ? görünür.</p>
           </section>
+          <section class="section"><h3>Kaynak sınırı <span class="help-tip" tabindex="0" data-tooltip="Seçili görseller sınırı aşarsa ZIP işlemi başlamaz; önce seçimi azaltman istenir. İndirme sırasında bilinmeyen boyutlar yüzünden sınır aşılırsa işlem durdurulur. 0 = sınırsız." aria-label="Kaynak sınırı hakkında bilgi"></span></h3>
+            <label><span>En fazla görsel (0 = sınırsız)</span><input data-control="maxImages" type="number" min="0" max="100000"></label>
+            <label><span>En fazla toplam boyut (MB, 0 = sınırsız)</span><input data-control="maxTotalMB" type="number" min="0" max="100000"></label>
+            <p class="muted">Sınır, tek bir ZIP işleminin seçili görselleri için geçerlidir. Boyut bilgisi indirilmeden önce yalnızca bilinen ölçülerden tahmin edilir.</p>
+          </section>
         </div>
         <div role="tabpanel" id="isp-images-panel" aria-labelledby="isp-images-tab" x-show="active === 'images'" x-cloak>
           <section class="section"><h3>Görsel seçimi ve URL</h3>
@@ -84,6 +96,8 @@
             <label><span>Benzer görselleri grupla <span class="help-tip" tabindex="0" data-tooltip="Algısal benzerlik raporlanır; görseller otomatik silinmez veya ZIP’ten çıkarılmaz." aria-label="Benzer görseller hakkında bilgi"></span></span><input data-control="visualGroups" type="checkbox"></label>
             <label><span>ZIP’i seçilen klasöre akışla yaz <span class="help-tip" tabindex="0" data-tooltip="Destekleyen Chromium tarayıcılarında klasör seçtirir. Görsel verileri işlem bitene kadar bellekte kalır." aria-label="ZIP akışı hakkında bilgi"></span></span><input data-control="streamZip" type="checkbox"></label>
             <label class="column"><span>Dosya adı şablonu <span class="help-tip" tabindex="0" data-tooltip="Değişkenler: {sira}, {sayfa}, {orijinal_ad}, {boyut}." aria-label="Dosya adı şablonu hakkında bilgi"></span></span><input data-control="template"></label>
+            <label><span>ZIP içinde klasörle <span class="help-tip" tabindex="0" data-tooltip="Dosyalar kaynak alan adına veya kaynak sayfanın yoluna göre klasörlenir. Ad çakışmaları tam yol üzerinden çözülür; arşiv içinde kalır, klasör dışına yazmaz." aria-label="ZIP klasörleme hakkında bilgi"></span></span><select data-control="zipFolders" aria-label="ZIP içi klasörleme"><option value="none">Klasör yok (düz)</option><option value="host">Kaynak alan adına göre</option><option value="page">Kaynak sayfa yoluna göre</option></select></label>
+            <label><span>Kaynak manifesti ekle (manifest.json) <span class="help-tip" tabindex="0" data-tooltip="Her dosyanın adını, kaynak URL'sini, kaynak sayfasını, ölçüsünü, boyutunu ve varsa SHA-256 hash'ini yazar. URL'ler imzalı veya hassas parametre içerebilir; manifest bu bilgileri arşivin içinde taşır." aria-label="Kaynak manifesti hakkında bilgi"></span></span><input data-control="zipManifest" type="checkbox"></label>
             <p class="template-preview muted" data-control="templatePreview" role="status" aria-live="polite"></p>
           </section>
         </div>

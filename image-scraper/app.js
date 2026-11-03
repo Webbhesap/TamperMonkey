@@ -76,6 +76,13 @@
     PART_MAX_FILES: 250,
     PART_MAX_MB: 200,
     DEDUPE_CONTENT: false,
+    // ZIP içi klasörleme: none | host (alan adı) | page (kaynak sayfa yolu)
+    ZIP_FOLDERS: 'none',
+    // Kaynak manifesti: arşive manifest.json ekler (URL'ler hassas olabilir).
+    ZIP_MANIFEST: false,
+    // Oturum başına kaynak sınırı: 0 = sınırsız.
+    MAX_IMAGES: 0,
+    MAX_TOTAL_MB: 0,
     NAME_TEMPLATE: '{sira}_{orijinal_ad}',
     SKIP_PATTERNS: 'thumb|icon|logo|avatar|emoji|banner|1x1|pixel|\\.gif(?:$|[?#])',
     CUSTOM_PAGINATION_TEMPLATE: '{url}/{n}',
@@ -112,7 +119,7 @@
   const checkAbort = signal => { if (signal && signal.aborted) throw abortError(); };
   const createZipModule = global.ImageScraperModules?.createZipModule;
   if (typeof createZipModule !== 'function') throw new Error('ZIP modülü yüklenemedi. Loader @require sırasını kontrol et.');
-  const { safeBaseName, zipName, zipEntryName, createUniqueZipFile, saveBlob, generateZipBlob, generateZipToWritable, verifyZipBytes } =
+  const { safeBaseName, safeFolder, zipName, zipEntryName, createUniqueZipFile, saveBlob, generateZipBlob, generateZipToWritable, verifyZipBytes } =
     createZipModule({ $el, document, URL, Blob, Uint8Array, checkAbort, abortError });
   const createNetworkModule = global.ImageScraperModules?.createNetworkModule;
   if (typeof createNetworkModule !== 'function') throw new Error('Ağ modülü yüklenemedi. Loader @require sırasını kontrol et.');
@@ -131,13 +138,14 @@
       if (profiles && profiles[location.origin]) saved = { ...(saved || {}), ...profiles[location.origin] };
       if (!saved || typeof saved !== 'object' || Array.isArray(saved)) return { ...DEFAULTS };
       const c = { ...DEFAULTS, ...saved };
-      for (const [k, min, max] of [['MAX_PAGES', 0, 50], ['MIN_WIDTH', 0, 100000], ['MIN_HEIGHT', 0, 100000], ['TIMEOUT_MS', 1000, 120000], ['ZIP_CONCURRENT', 1, 10], ['PART_MAX_FILES', 1, 10000], ['PART_MAX_MB', 1, 2000], ['ARTICLE_MAX_PAGES', 0, 10000], ['MAX_ARTICLES', 0, 100000]]) {
+      for (const [k, min, max] of [['MAX_PAGES', 0, 50], ['MIN_WIDTH', 0, 100000], ['MIN_HEIGHT', 0, 100000], ['TIMEOUT_MS', 1000, 120000], ['ZIP_CONCURRENT', 1, 10], ['PART_MAX_FILES', 1, 10000], ['PART_MAX_MB', 1, 2000], ['ARTICLE_MAX_PAGES', 0, 10000], ['MAX_ARTICLES', 0, 100000], ['MAX_IMAGES', 0, 100000], ['MAX_TOTAL_MB', 0, 100000]]) {
         c[k] = clampInt(c[k], min, max, DEFAULTS[k]);
       }
       c.DYNAMIC_STEPS = clampInt(c.DYNAMIC_STEPS, 0, Number.MAX_SAFE_INTEGER, DEFAULTS.DYNAMIC_STEPS);
-      for (const k of ['CHECK_REAL_SIZE', 'USE_SELECTOR', 'USE_REPLACE', 'DECODE_URL', 'RETRY_REFERER', 'EXCLUDE_UNKNOWN', 'DYNAMIC_SCROLL', 'DEDUPE_CONTENT', 'STOP_DUPLICATE_PAGES', 'PREVIEW_PAGE_QUEUE', 'SAVE_SCAN_PROGRESS', 'GROUP_VISUAL_SIMILARITY', 'STREAM_ZIP_TO_DISK', 'VERIFY_ZIP', 'DEEP_CRAWL']) c[k] = c[k] === true;
+      for (const k of ['CHECK_REAL_SIZE', 'USE_SELECTOR', 'USE_REPLACE', 'DECODE_URL', 'RETRY_REFERER', 'EXCLUDE_UNKNOWN', 'DYNAMIC_SCROLL', 'DEDUPE_CONTENT', 'STOP_DUPLICATE_PAGES', 'PREVIEW_PAGE_QUEUE', 'SAVE_SCAN_PROGRESS', 'GROUP_VISUAL_SIMILARITY', 'STREAM_ZIP_TO_DISK', 'VERIFY_ZIP', 'DEEP_CRAWL', 'ZIP_MANIFEST']) c[k] = c[k] === true;
       if (!['auto','html-slash','query-page','page-path','slash-page','dash-html','underscore-html','custom'].includes(c.PAGINATION_MODE)) c.PAGINATION_MODE = 'auto';
       if (!['any','same-host','selected-hosts'].includes(c.IMAGE_SOURCE_MODE)) c.IMAGE_SOURCE_MODE = 'any';
+      if (!['none','host','page'].includes(c.ZIP_FOLDERS)) c.ZIP_FOLDERS = 'none';
       for (const k of ['SELECTOR', 'NEXT_SELECTOR', 'ZIP_FILENAME', 'SKIP_PATTERNS', 'NAME_TEMPLATE', 'CUSTOM_PAGINATION_TEMPLATE', 'IMAGE_SOURCE_HOSTS', 'ARTICLE_LINK_SELECTOR', 'ARTICLE_TITLE_SELECTOR', 'ARTICLE_NEXT_SELECTOR']) if (typeof c[k] !== 'string') c[k] = DEFAULTS[k];
       if (!Array.isArray(c.REPLACEMENTS) || !c.REPLACEMENTS.every(r => r && typeof r.from === 'string' && r.from.length > 0 && typeof r.to === 'string')) c.REPLACEMENTS = DEFAULTS.REPLACEMENTS;
       try { if (c.SKIP_PATTERNS) new RegExp(c.SKIP_PATTERNS, 'i'); } catch { c.SKIP_PATTERNS = DEFAULTS.SKIP_PATTERNS; }
@@ -821,7 +829,7 @@
   if (typeof createResultsUI !== 'function') throw new Error('Sonuç arayüzü modülü yüklenemedi. Loader @require sırasını kontrol et.');
   const showResults = createResultsUI({ $el, dialog, section, ui, readJSON, deleteKey, DEFAULTS, SESSION_KEY, CACHE_KEY, CACHE_CAP, GM_getValue, GM_setValue,
     formatBytes, etaSeconds, formatEta, encodeData, decodeData, adaptivePool, copyText, displayUrl, buildDiagnosticSummary,
-    safeBaseName, zipName, zipEntryName, createUniqueZipFile, saveBlob, generateZipToWritable, generateZipBlob, verifyZipBytes,
+    safeBaseName, safeFolder, zipName, zipEntryName, createUniqueZipFile, saveBlob, generateZipToWritable, generateZipBlob, verifyZipBytes,
     downloadImageRetry, imageFormat, perceptualHash, hashDistance, smartFitMode, checkAbort, isAbort, location, document, window,
     URL, Blob, AbortController, TextEncoder, crypto: global.crypto });
 
