@@ -15,8 +15,9 @@
       const settingsTabs = settingsNav.querySelector('.settings-tabs');
       const tabButtons = new Map([...settingsTabs.querySelectorAll('[data-tab-key]')].map(tab => [tab.dataset.tabKey, tab]));
       const settingsPanes = new Map([...settingsNav.querySelectorAll('[role="tabpanel"]')].map(pane => [pane.id.replace(/^isp-/, '').replace(/-panel$/, ''), pane]));
-      const settingsPane = settingsPanes.get('general'), scanPane = settingsPanes.get('scan'), imagesPane = settingsPanes.get('images');
-      const zipPane = settingsPanes.get('zip'), excludedPane = settingsPanes.get('excluded'), backupPane = settingsPanes.get('backup'), recordsPane = settingsPanes.get('records');
+      // Yalnızca 'records' paneli doğrudan kullanılır; diğerlerine selectSettingsTab
+      // üzerinden erişilir. Kullanılmayan bağlamalar kaldırıldı.
+      const recordsPane = settingsPanes.get('records');
       d.box.appendChild(settingsNav);
       const selectSettingsTab = name => {
         const selected = name === 'settings' ? 'general' : (settingsPanes.has(name) ? name : 'general');

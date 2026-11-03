@@ -6,8 +6,29 @@
       formatBytes, etaSeconds, formatEta, encodeData, decodeData, adaptivePool, copyText, displayUrl, buildDiagnosticSummary,
       safeBaseName, zipName, zipEntryName, createUniqueZipFile, saveBlob, generateZipToWritable, generateZipBlob,
       downloadImageRetry, imageFormat, perceptualHash, hashDistance, smartFitMode, checkAbort, isAbort, location, document, window,
-      navigator, URL, Blob, AbortController, TextEncoder, crypto } = deps;
+      URL, Blob, AbortController, TextEncoder, crypto } = deps;
     if (typeof smartFitMode !== 'function') throw new Error('Slayt gösterisi akıllı sığdırma işlevi bağlanamadı.');
+    /**
+     * Bağlantı adresini güvenli protokollerle sınırlar. Tarama sırasında toplanan
+     * adresler sayfadan gelir; `javascript:` veya `data:` gibi bir adresin
+     * tıklanabilir bağlantıya dönüşmesi kod çalıştırmaya yol açabilir.
+     * Geçersiz adresler tıklanamaz bir yer tutucuya dönüşür.
+     */
+    const safeHref = value => {
+      try {
+        const parsed = new URL(String(value || ''), location.href);
+        if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null;
+        // Kimlik bilgisi içeren adresler kullanıcıya yanlış kaynak gösterir.
+        if (parsed.username || parsed.password) return null;
+        return parsed.href;
+      } catch { return null; }
+    };
+    /** Güvenli değilse bağlantıyı düz metne çevirir; hiçbir zaman atlanmaz. */
+    const linkOrText = (attributes, text) => {
+      const href = safeHref(attributes.href);
+      if (!href) return $el('span', { title: String(attributes.href || '') }, text);
+      return $el('a', { ...attributes, href }, text);
+    };
     return function showResults(result, c, restored = null) {
       const images = result.images.map(img => ({ ...img, displayWidth: img.displayWidth || 0, displayHeight: img.displayHeight || 0, selected: img.selected !== false, status: img.status || 'bekliyor' }));
       const duplicateRecords = Array.isArray(result.duplicates) ? result.duplicates.filter(x => x && typeof x.url === 'string' && Number.isSafeInteger(x.count) && x.count > 0) : [];
@@ -24,9 +45,21 @@
       const sessionPane = $el('div', { class: 'result-pane', role: 'tabpanel', id: 'isp-pane-session', hidden: true });
       const tabDefs = [[galleryPane, 'Galeri'], [linksPane, 'Bağlantılar'], [downloadPane, 'ZIP ve indirme'], [sessionPane, 'Oturum']];
       const tabButtons = [];
+      // Kurulum tamamlanmadan activateTab çağrılırsa sekmeler hazır
+      // olmayabilir; bu bayrak yalnızca güvenli çağrı noktasına izin verir.
+      let tabsReady = false;
       const activateTab = index => {
+        if (!tabsReady) return;
         tabDefs.forEach(([pane], i) => { pane.hidden = i !== index; tabButtons[i].setAttribute('aria-selected', String(i === index)); tabButtons[i].tabIndex = i === index ? 0 : -1; });
+        // Filtre yalnızca galeri görünümünde anlamlı; diğer sekmelerde gizle.
+        openFilterDrawer.hidden = tabDefs[index]?.[0] !== galleryPane;
+        // Galeride kaydırma galerinin kendisinde; sekme çubuğu ve içerik
+        // geri kalan alanı paylaşır. Diğer sekmeler normal akışla kayar.
+        workspace.classList.toggle('is-gallery', tabDefs[index]?.[0] === galleryPane);
         workspace.scrollTop = 0;
+        // NOT: render() burada çağrılmaz. activateTab(0) kurulum sırasında,
+        // render'ın bağımlı olduğu denetimler (grid, query...) henüz
+        // tanımlanmadan çalışır; galeri zaten sonda bir kez render edilir.
       };
       tabDefs.forEach(([pane, name], index) => {
         const btn = $el('button', { type: 'button', role: 'tab', 'aria-controls': pane.id, 'aria-selected': String(index === 0) }, name);
@@ -71,7 +104,7 @@
         linkNotice.appendChild(warningList);
       }
       if (blockedPages.length) {
-        for (const blockedUrl of blockedPages) linkNotice.appendChild($el('a', { href:blockedUrl, target:'_blank', rel:'noopener noreferrer' }, '🔐 Sayfayı açıp doğrulamayı tamamla'));
+        for (const blockedUrl of blockedPages) linkNotice.appendChild(linkOrText({ href:blockedUrl, target:'_blank', rel:'noopener noreferrer' }, '🔐 Sayfayı açıp doğrulamayı tamamla'));
       }
       linksPane.append(linkNotice, linkSubtabs, selectedLinksPane, duplicateLinksPane);
       const pageDetails = $el('details'); pageDetails.appendChild($el('summary', {}, 'Taranan sayfalar'));
@@ -85,7 +118,7 @@
       if (!duplicateRecords.length) duplicateList.appendChild($el('p', { class: 'muted' }, 'Tarama sırasında yinelenen görsel URL’si bulunmadı.'));
       for (const record of duplicateRecords) {
         const row = $el('div', { class: 'duplicate-url-row' });
-        const anchor = $el('a', { href: record.url, target: '_blank', rel: 'noopener noreferrer' }, displayUrl(record.url, c));
+        const anchor = linkOrText({ href: record.url, target: '_blank', rel: 'noopener noreferrer' }, displayUrl(record.url, c));
         const firstPage = record.firstPage || images.find(item => item.url === record.url)?.page || '';
         const sourcePages = [...new Set([firstPage, ...(Array.isArray(record.pages) ? record.pages : [])].filter(Boolean))];
         const sourceText = sourcePages.length ? ` · Görüldüğü sayfalar: ${sourcePages.join(', ')}` : '';
@@ -99,7 +132,7 @@
       const copyDuplicateUrls = $el('button', { type: 'button', class: 'secondary', disabled: !duplicateRecords.length }, '📋 Tekrarlanan URL’leri kopyala');
       const duplicateCopyStatus = $el('p', { class: 'muted', role: 'status' });
       duplicateCopyActions.appendChild(copyDuplicateUrls); duplicateLinksPane.append(duplicateCopyActions, duplicateCopyStatus);
-      copyDuplicateUrls.onclick = async () => { try { await copyText(duplicateRecords.map(record => record.url).join('\\n')); duplicateCopyStatus.textContent = '✅ Tekrarlanan URL’ler kopyalandı.'; } catch (error) { duplicateCopyStatus.textContent = '❌ ' + error.message; } };
+      copyDuplicateUrls.onclick = async () => { try { await copyText(duplicateRecords.map(record => record.url).join('\n')); duplicateCopyStatus.textContent = '✅ Tekrarlanan URL’ler kopyalandı.'; } catch (error) { duplicateCopyStatus.textContent = '❌ ' + error.message; } };
       const contentDuplicateHeading = $el('div', { class: 'output-heading' });
       const contentDuplicateCount = $el('span', {}, `${contentDuplicatePairs.length} SHA-256 eşleşmesi`);
       contentDuplicateHeading.append($el('strong', {}, 'Farklı URL, aynı dosya içeriği'), contentDuplicateCount);
@@ -112,14 +145,16 @@
         if (!contentDuplicatePairs.length) { contentDuplicateList.appendChild($el('p', { class: 'muted' }, 'Farklı URL’lerde aynı içerik eşleşmesi henüz bulunmadı.')); return; }
         for (const pair of contentDuplicatePairs) {
           const row = $el('div', { class: 'duplicate-url-row' });
-          row.append($el('a', { href: pair.skippedUrl, target: '_blank', rel: 'noopener noreferrer' }, displayUrl(pair.skippedUrl, c)), $el('span', { class: 'duplicate-url-count' }, 'ZIP’ten atlandı; aynı SHA-256 içeriği bu bağlantıda da var:'), $el('a', { href: pair.keptUrl, target: '_blank', rel: 'noopener noreferrer' }, displayUrl(pair.keptUrl, c)));
+          row.append(linkOrText({ href: pair.skippedUrl, target: '_blank', rel: 'noopener noreferrer' }, displayUrl(pair.skippedUrl, c)), $el('span', { class: 'duplicate-url-count' }, 'ZIP’ten atlandı; aynı SHA-256 içeriği bu bağlantıda da var:'), linkOrText({ href: pair.keptUrl, target: '_blank', rel: 'noopener noreferrer' }, displayUrl(pair.keptUrl, c)));
           contentDuplicateList.appendChild(row);
         }
       };
       renderContentDuplicatePairs(); duplicateLinksPane.appendChild(contentDuplicateList);
-      const galleryToolsBar = $el('div', { class:'gallery-tools-bar' });
+      // Filtre düğmesi sekme çubuğunun sağ ucunda durur: galerinin üstünde ayrı
+      // bir araç çubuğu, görsellerin "arada sıkışmış" görünmesine ve boş alan
+      // bırakılmasına yol açıyordu.
       const openFilterDrawer = $el('button', { type:'button', class:'secondary filter-open-button', 'aria-haspopup':'dialog', 'aria-expanded':'false' }, '☷ Görselleri filtrele ve seç');
-      galleryToolsBar.appendChild(openFilterDrawer); galleryPane.appendChild(galleryToolsBar);
+      tabs.appendChild(openFilterDrawer);
       const filterDrawerBackdrop = $el('div', { class:'filter-drawer-backdrop', hidden:true });
       const filterDrawerPanel = $el('div', { class:'filter-drawer-panel', role:'dialog', 'aria-modal':'true', 'aria-label':'Görselleri filtrele ve seç' });
       const filterDrawerHeader = $el('div', { class:'filter-drawer-header' });
@@ -330,7 +365,11 @@
         remember = true; persist(true);
       };
       function kind(img) {
-        const ext = (img.ext || new URL(img.url).pathname.split('.').pop() || '').toLowerCase();
+        // new URL() bozuk bir adreste hata fırlatır; galeri çizimi buna takılmamalı.
+        let ext = String(img.ext || '').toLowerCase();
+        if (!ext) {
+          try { ext = (new URL(img.url).pathname.split('.').pop() || '').toLowerCase(); } catch { ext = ''; }
+        }
         return ext === 'jpeg' ? 'jpg' : ['jpg','png','webp','gif','avif','svg'].includes(ext) ? ext : 'unknown';
       }
       function filtered() {
@@ -341,15 +380,15 @@
           if (articleQuery && ![img.articleUrl, ...(img.articleUrls || [])].filter(Boolean).includes(articleQuery)) return false;
           if (topicQuery && ![img.topic, ...(img.topics || [])].filter(Boolean).includes(topicQuery)) return false;
           if (format.value && kind(img) !== format.value) return false;
-          if (known.value === 'exclude' && missing || known.value === 'only' && !missing) return false;
-          if (mw && img.width && img.width < mw || mh && img.height && img.height < mh) return false;
+          if ((known.value === 'exclude' && missing) || (known.value === 'only' && !missing)) return false;
+          if ((mw && img.width && img.width < mw) || (mh && img.height && img.height < mh)) return false;
           const loBytes = (Number(minMB.value) || 0) * 1048576, hiBytes = (Number(maxMB.value) || 0) * 1048576;
-          if (img.bytes && (loBytes && img.bytes < loBytes || hiBytes && img.bytes > hiBytes)) return false;
+          if (img.bytes && ((loBytes && img.bytes < loBytes) || (hiBytes && img.bytes > hiBytes))) return false;
           if (ratio.value === 'unknown' && !missing) return false;
           if (ratio.value && ratio.value !== 'unknown') {
             if (missing) return false;
             const r = img.width / img.height;
-            if (ratio.value === 'square' && (r < .9 || r > 1.1) || ratio.value === 'landscape' && r <= 1.1 || ratio.value === 'portrait' && r >= .9) return false;
+            if ((ratio.value === 'square' && (r < .9 || r > 1.1)) || (ratio.value === 'landscape' && r <= 1.1) || (ratio.value === 'portrait' && r >= .9)) return false;
           }
           return true;
         });
@@ -381,7 +420,7 @@
         zipPlanStatus.textContent = `ZIP ön kontrolü: ${chosen.length} seçili · bilinen boyut ${formatBytes(knownBytes)} · boyutu bilinmeyen ${unknownSizes} · mevcut bilgilere göre en az ${Math.max(fileParts, byteParts)} parça. Sınırlar: ${c.PART_MAX_FILES} dosya / ${c.PART_MAX_MB} MB-parça. Kesin boyut indirme sonrası belli olur; ${streamAvailable ? 'ZIP akışla diske yazılır, görsel baytları bellekte kalır.' : 'ZIP arşivi oluşturma tarayıcı belleği kullanır.'}`;
         zip.disabled = !!zipController || !chosen.length;
         text.value = chosen.map(i => displayUrl(i.url, c)).join('\n');
-        const viewportWidth = Number(window.innerWidth) || Number(innerWidth) || 1280;
+        const viewportWidth = Number(window.innerWidth) || 1280;
         const mobileLayout = viewportWidth <= 600, columnGap = mobileLayout ? 9 : 15, minCardWidth = mobileLayout ? 160 : 220;
         const gridWidth = Number(grid.clientWidth) || Math.max(minCardWidth, viewportWidth - 56);
         const columns = mobileLayout ? 2 : Math.max(1, Math.floor((gridWidth + columnGap) / (minCardWidth + columnGap)));
@@ -415,7 +454,7 @@
           const meta = $el('div', { class: 'meta' });
           meta.append($el('strong', { title: img.url }, safeBaseName(img.url)), $el('div', {}, `${img.width || '?'} × ${img.height || '?'} gerçek${img.displayWidth || img.displayHeight ? ` · HTML ${img.displayWidth || '?'} × ${img.displayHeight || '?'}` : ''} · ${kind(img).toUpperCase()}`), $el('div', {}, `${img.bytes ? formatBytes(img.bytes) + ' · ' : ''}${img.status || 'bekliyor'}`));
           if (img.topic) meta.appendChild($el('div', { class:'muted' }, `Konu: ${img.topic}`));
-          if (img.articleUrl) meta.appendChild($el('a', { href:img.articleUrl, target:'_blank', rel:'noopener noreferrer', title:img.articleUrl }, 'Ana içerik sayfası'));
+          if (img.articleUrl) meta.appendChild(linkOrText({ href:img.articleUrl, target:'_blank', rel:'noopener noreferrer', title:img.articleUrl }, 'Ana içerik sayfası'));
           card.appendChild(meta); grid.appendChild(card);
         }
         addVirtualSpacer(Math.max(0, totalRows - endRow));
@@ -598,7 +637,7 @@
           cachedSelectionList = selection();
           selectedMetric.textContent = String(cachedSelectionList.length);
           zip.disabled = !!zipController || !cachedSelectionList.length;
-          text.value = cachedSelectionList.map(item => displayUrl(item.url, c)).join('\\n');
+          text.value = cachedSelectionList.map(item => displayUrl(item.url, c)).join('\n');
         };
         function showSlide() {
           clearSlideTransition();
@@ -757,6 +796,10 @@
       previews.addEventListener('input', render);
       selectAll.onclick = () => { filtered().forEach(i => { i.selected = true; }); render(); scheduleSave(); };
       selectNone.onclick = () => { filtered().forEach(i => { i.selected = false; }); render(); scheduleSave(); };
+      // Galeri varsayılan sekme. Bu noktadan önce activateTab çağrılamaz:
+      // gövdesi openFilterDrawer/galleryPane gibi sonradan tanımlanan
+      // const'lara dokunur ve erken çağrı TDZ ReferenceError üretir.
+      tabsReady = true; activateTab(0);
       render();
       const reportCopy = async value => { try { await copyText(value); status.textContent = '✅ Kopyalandı.'; } catch (e) { status.textContent = '❌ ' + e.message; } };
       copy.onclick = () => reportCopy(text.value);
@@ -850,7 +893,7 @@
             if (verificationUrls.size) {
               verifyLinks.appendChild($el('p', { class: 'muted' }, 'Doğrulamayı tamamlayıp ZIP’e tekrar basın; başarılı görseller yeniden indirilmez.'));
               for (const [origin, url] of verificationUrls) {
-                const a = $el('a', { class: 'verification-link', href: url, target: '_blank', rel: 'noopener noreferrer' }, `🔐 Doğrula / görseli aç: ${origin}`);
+                const a = linkOrText({ class: 'verification-link', href: url, target: '_blank', rel: 'noopener noreferrer' }, `🔐 Doğrula / görseli aç: ${origin}`);
                 verifyLinks.appendChild(a);
               }
             }

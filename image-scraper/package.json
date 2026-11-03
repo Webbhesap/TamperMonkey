@@ -1,0 +1,22 @@
+{
+  "name": "image-scraper-userscript",
+  "version": "6.5.6",
+  "private": true,
+  "description": "Image Scraper Alternative – Tampermonkey/Violentmonkey userscript for Chrome and Firefox",
+  "type": "module",
+  "scripts": {
+    "test": "node tests/run-all.mjs",
+    "test:static": "node tests/run-static.mjs",
+    "test:browser": "node tests/run-browser.mjs",
+    "test:loader": "node tests/run-loader.mjs",
+    "lint": "eslint --no-config-lookup -c eslint.config.mjs app.js modules/*.js"
+  },
+  "devDependencies": {
+    "@sparticuz/chromium": "^153.0.0",
+    "eslint": "^10.14.0",
+    "puppeteer-core": "^25.16.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
