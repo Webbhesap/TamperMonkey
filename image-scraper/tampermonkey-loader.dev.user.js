@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Image Scraper — geliştirme (önbelleksiz)
 // @namespace    https://github.com/Webbhesap/TamperMonkey
-// @version      0.1.1
+// @version      0.1.2
 // @description  Geliştirme sürümü: tüm JS dosyalarını her açılışta GitHub'dan çeker, @require önbelleği kullanmaz.
 // @author       Webbhesap
 // @match        *://*/*
