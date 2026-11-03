@@ -212,7 +212,7 @@
       const previewLabel = $el('label', { class: 'compact' }); previewLabel.append(previews, $el('span', {}, 'Önizlemeleri yükle'));
       row3.append(selectAll, selectNone, slideshowLaunch, previewLabel); tools.appendChild(row3);
       const explanation = $el('p', { class: 'muted' }, 'Filtreler yalnızca görünümü değiştirir; ZIP ve dışa aktarım filtre dışında kalanlar dâhil tüm seçili görselleri kullanır. Bilinmeyen dosya boyutları aralık filtresinde korunur. Önizleme, görsel sunucularına yeni istek gönderebilir.'); tools.appendChild(explanation);
-      const grid = $el('div', { class: 'gallery', role: 'region', tabindex: 0, 'aria-label': 'Görsel galerisi' }); tools.appendChild(grid);
+      const grid = $el('div', { class: 'gallery', role: 'region', tabindex: 0, 'aria-label': 'Görsel galerisi' }); galleryPane.appendChild(grid);
       const gridNote = d.subtitle;
       const outputHeading = $el('div', { class: 'output-heading' });
       outputHeading.append($el('strong', {}, 'Seçili görsel bağlantıları'), $el('span', {}, 'Kopyala veya dışa aktar')); selectedLinksPane.appendChild(outputHeading);
