@@ -350,3 +350,90 @@ details{border:1px solid #384157;background:#1a2130;border-radius:10px;padding:1
 /* Toplu seçim satırı iki kolonlu ızgarada tek başına kalsın (taşmasın). */
 .filter-drawer-body .bulk-row{grid-template-columns:repeat(2,minmax(0,1fr))}
 .filter-drawer-body .bulk-row button{min-width:0}
+
+/* ===========================================================================
+   FİLTRE ÇEKMECESİ v2 — başlıklı bölümler, filtre rozetleri, görünüm ayarları
+   Sorun: çekmece eşit ağırlıklı birkaç "toolbar" satırından oluşuyordu.
+   Hangi alanın ne olduğu (yer tutucu metin kaybolunca), hangi filtrelerin
+   etkin olduğu ve filtrenin kaç görsel bıraktığı görünmüyordu. Yeni yapı:
+   başlıklı kartlar, kalıcı alan etiketleri, canlı sayaç, tek tıkla kaldırılan
+   filtre rozetleri ve galeri görünümü ayarları.
+   =========================================================================== */
+.filter-drawer-panel{width:min(540px,96vw)}
+.drawer-title-block{display:flex;flex-direction:column;gap:3px;min-width:0}
+.drawer-subtitle{margin:0;font-size:var(--isp-fs-micro);color:var(--isp-text-dim);
+  font-variant-numeric:tabular-nums;line-height:1.4}
+.filter-drawer-body{display:flex;flex-direction:column;gap:14px;padding:16px 20px 26px}
+.drawer-section{display:flex;flex-direction:column;gap:10px;padding:13px 14px 14px;
+  border:1px solid var(--isp-line);border-radius:var(--isp-radius);background:var(--isp-surface-0)}
+.drawer-section-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.drawer-section-head h4{margin:0;font-size:var(--isp-fs-micro);font-weight:750;letter-spacing:.08em;
+  text-transform:uppercase;color:var(--isp-accent-soft)}
+.drawer-section-hint{font-size:var(--isp-fs-micro);color:var(--isp-text-dim);font-weight:500}
+.drawer-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:11px 12px}
+.drawer-field{display:flex;flex-direction:column;align-items:stretch;justify-content:flex-start;
+  gap:5px;min-width:0;margin:0;text-align:left}
+.drawer-field-wide{grid-column:1/-1}
+.drawer-field-label{font-size:var(--isp-fs-micro);font-weight:650;color:var(--isp-text-muted);letter-spacing:.02em}
+.filter-drawer-body .drawer-field input:not([type=checkbox]),
+.filter-drawer-body .drawer-field select{width:100%;min-width:0;min-height:var(--isp-tap);
+  font-size:var(--isp-fs-small);box-sizing:border-box}
+/* Onay kutusu satırı: kutucuk solda, başlık + açıklama sağda. */
+.drawer-toggle{display:flex;align-items:flex-start;justify-content:flex-start;gap:10px;width:100%;box-sizing:border-box;
+  padding:9px 11px;border:1px solid var(--isp-line);border-radius:var(--isp-radius-sm);
+  background:#151b2a;cursor:pointer;transition:border-color .15s,background .15s}
+.drawer-toggle:hover{border-color:var(--isp-line-strong);background:#1a2131}
+.drawer-toggle:has(input:checked){border-color:#4b5c86;background:#1a2333}
+.drawer-toggle input[type=checkbox]{flex:0 0 auto;width:20px;height:20px;margin:1px 0 0}
+.drawer-toggle-text{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1 1 auto}
+.drawer-toggle-title{font-size:var(--isp-fs-small);font-weight:600;color:var(--isp-text);line-height:1.35}
+.drawer-toggle-text small{font-size:var(--isp-fs-micro);color:var(--isp-text-dim);line-height:1.45}
+/* Etkin filtre rozetleri: tek tıkla o filtre kaldırılır. */
+.drawer-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:2px}
+.drawer-chips[hidden]{display:none}
+/* Başlıktaki rozet şeridi: çekmece kaydırılsa da etkin filtreler görünür. */
+.drawer-header-chips{margin-top:8px;max-height:74px;overflow:auto;scrollbar-width:thin;
+  scrollbar-color:#46526b transparent}
+.filter-drawer-header{align-items:flex-start}
+.drawer-chip{display:inline-flex;align-items:center;gap:6px;max-width:100%;min-height:26px;
+  padding:3px 9px 3px 11px;border-radius:99px;border:1px solid #4d4477;background:#282246;
+  color:#e5e0ff;font-size:var(--isp-fs-micro);font-weight:650;line-height:1.4;cursor:pointer;
+  transition:background .15s,border-color .15s}
+.drawer-chip:hover{background:#332b57;border-color:#6b5fa8}
+.drawer-chip-text{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:250px}
+.drawer-chip-x{font-size:13px;font-weight:800;color:#b9aef0;line-height:1}
+.drawer-chip:hover .drawer-chip-x{color:#fff}
+/* Bölüm içi eylem düğmeleri. */
+.filter-drawer-body .drawer-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:8px;margin:0}
+.filter-drawer-body .drawer-actions button{min-height:var(--isp-tap);min-width:0;width:100%;
+  line-height:1.25;padding:8px 10px}
+.filter-drawer-body .drawer-actions .drawer-action-wide{grid-column:1/-1}
+.filter-drawer-body .drawer-footer-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:8px;margin:0;padding-top:2px}
+.filter-drawer-body .drawer-footer-actions button{min-height:var(--isp-tap);min-width:0}
+.drawer-reset{background:#1c2334;border-color:#3c4560;color:#c8d2e6}
+.filter-drawer-body .drawer-apply{background:linear-gradient(120deg,#8275ff,#a06bee);color:#fff;
+  border-color:#8f82ff;font-weight:700}
+.filter-drawer-body .drawer-apply:hover{background:linear-gradient(120deg,#8f83ff,#ab78f4)}
+.drawer-note{margin:0;font-size:var(--isp-fs-micro);line-height:1.6;color:var(--isp-text-dim)}
+/* Toplu seçim: 3 seçici tek satır, 2 düğme alt satır (altı kolon ızgara). */
+.filter-drawer-body .bulk-row{grid-template-columns:repeat(6,minmax(0,1fr));gap:8px}
+.filter-drawer-body .bulk-row select{grid-column:span 2}
+.filter-drawer-body .bulk-row button{grid-column:span 3}
+/* Açıklamalar gizliyken küçük resim kartın tamamını kaplar; kart yüksekliği
+   sabit kaldığı için galeri sanallaştırması etkilenmez. */
+.result-pane .gallery[data-captions=off] .image-card .meta{display:none}
+.result-pane .gallery[data-captions=off] .image-card .thumb-wrap{flex:1 1 auto;height:auto;aspect-ratio:auto}
+/* Küçük resim görünümü: "sığdır" tamamını gösterir, "kırp" kartı doldurur. */
+.result-pane .gallery[data-fit=cover] .image-card img{object-fit:cover}
+@media (max-width:600px){
+  .drawer-grid{grid-template-columns:1fr}
+  .drawer-section{padding:11px 12px 12px}
+  .filter-drawer-body{gap:12px;padding:12px 14px 22px}
+  .filter-drawer-body .drawer-footer-actions{grid-template-columns:1fr}
+  .drawer-chip-text{max-width:62vw}
+  .filter-drawer-body .bulk-row{grid-template-columns:1fr}
+  .filter-drawer-body .bulk-row select,
+  .filter-drawer-body .bulk-row button{grid-column:1/-1}
+}

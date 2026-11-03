@@ -8,6 +8,51 @@ eklenir. Amaç: hangi işin bittiğini tek bakışta görmek.
 
 ---
 
+## 2026-11-03 — Filtre çekmecesi yenilendi (görünüm ayarları dâhil)
+
+### Çekmece yapısı
+- **Başlıklı bölümler:** Çekmece eşit ağırlıklı, etiketsiz `toolbar`
+  satırlarından oluşuyordu; yer tutucu metin kaybolunca hangi alanın ne
+  olduğu anlaşılmıyordu. Artık beş bölüm var: **Ara**, **Filtreler**,
+  **Görünüm**, **Toplu seçim**, **İşlemler**. Her bölümün kendi başlığı,
+  kısa açıklaması ve kart görünümü var; her kontrolün kalıcı etiketi var.
+- **Canlı sayaç:** Başlıkta `5 / 7 görsel · 2 etkin filtre` gösterilir;
+  filtre değiştikçe ve rozet kaldırıldıkça anında güncellenir.
+- **Etkin filtre rozetleri:** Açık olan her filtre (arama, tür, içerik, konu,
+  min/max ölçü, oran, boyut bilgisi, dosya boyutu, yalnız seçili) başlıkta
+  rozet olarak listelenir; rozete tıklamak o filtreyi tek hamlede kaldırır.
+  Rozetler başlıkta durduğu için çekmece kaydırılsa da görünür kalır.
+- **Tek tıkla sıfırlama:** `↺ Filtreleri sıfırla` tüm filtreleri ve toplu
+  seçim kutularını temizler; görünüm tercihlerine (sütun, açıklama) dokunmaz.
+- **`Sonuçları gör` düğmesi:** Çekmeceyi kapatır. ZIP sekmesindeki birincil
+  düğmeyle karışmaması için ayrı `drawer-apply` sınıfı kullanılır.
+- **`/` kısayolu:** Çekmece içindeyken arama alanına odaklanır; `Escape`
+  kapatır, odak tuzağı ve `aria-modal` korunur.
+
+### Görünüm ayarları (yeni)
+- **Resim altı açıklamalarını gizle:** Dosya adı, ölçü, tür ve durum satırı
+  kapatılabilir; küçük resim kartın tamamını doldurur. Kart yüksekliği sabit
+  kaldığı için galeri sanallaştırması etkilenmez (320px kart / 318px resim).
+- **Izgara sütun sayısı:** `Otomatik` veya 1–6 sütun. Izgara şablonu JS'te
+  hesaplanan sütun sayısıyla birebir aynı yazılır, böylece sanallaştırmanın
+  satır hesabı CSS ile ayrışmaz; kartlar 120px'in altına sıkıştırılmaz.
+- **Küçük resim görünümü:** `Tamamı görünsün (sığdır)` / `Kartı doldur (kırp)`.
+- **Yalnız seçili görselleri göster:** Filtre gibi davranır, rozet olarak
+  görünür ve tek tıkla kaldırılır.
+- **Sıralamayı ters çevir:** Sayfa/URL/boyut sıralaması tersine döner.
+- **Kalıcı tercihler:** Açıklama, sütun, kırpma, yalnız seçili, ters sıra ve
+  önizleme tercihleri `isp_view_prefs_v1` altında saklanır.
+
+### Testler
+- Yeni `Filtre çekmecesi` tarayıcı testi (39 kontur): bölüm başlıkları,
+  etiketsiz alan kalmaması, canlı sayaç, açıklama gizleme (meta gizli + resim
+  kartı doldurur + tercih saklanır), sütun sayısı (4 → 4 iz, 2 → 2 iz, satırda
+  2 kart, taşma yok), kırpma görünümü, rozet ekleme/kaldırma, sıfırlama,
+  yalnız seçili filtresi ve kalıcılık.
+- Toplam: statik 36/36, loader 56/56, tarayıcı **198/198**, ESLint temiz.
+
+---
+
 ## 2026-11-03 — Arayüz yenilemesi ve ZIP görünürlüğü
 
 ### Tasarım ve kullanım kolaylığı
