@@ -84,6 +84,3 @@ Böylece burada kalan her madde gerçekten "yapılacak iş" listesidir.
 - **İsteğe bağlı format dönüştürme:** Seçili görselleri ZIP'e eklemeden önce
   JPEG/PNG/WebP'ye dönüştürme ve kalite ayarı; orijinalleri koruma seçeneği;
   dönüşüm tarayıcıda yerel yapılsın.
-- **Toplu seçim kısayolları:** Aralık seçimi, "yalnızca bu sayfa", alan adı
-  veya dosya türüne göre tümünü seç/kaldır; işlem öncesi etkilenecek sayıyı
-  bildir.

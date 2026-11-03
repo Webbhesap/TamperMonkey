@@ -828,6 +828,84 @@ if (only('ZIP bütünlük')) {
 }
 
 // ---------------------------------------------------------------------------
+// Toplu seçim kısayolları: "tümünü seç" yerine sayfa / alan adı / formata göre
+// hedefli seçim. Etkilenecek görsel sayısı işlemden sonra bildirilir.
+if (only('Toplu seçim')) {
+  t.test('Toplu seçim: format/sayfa/alan adına göre seç ve kaldır');
+  const page = await openApp('/basic/');
+  await setStorage(page, { isp_config: JSON.stringify({ MIN_WIDTH: 0, MIN_HEIGHT: 0 }) });
+  await runScan(page);
+  await page.evaluate(() => document.getElementById('__image_scraper_v4__').shadowRoot.querySelector('.filter-open-button').click());
+  await new Promise(resolve => setTimeout(resolve, 400));
+
+  const bulk = await page.evaluate(() => {
+    const root = document.getElementById('__image_scraper_v4__').shadowRoot;
+    const selects = [...root.querySelectorAll('.bulk-row select')];
+    return {
+      selectCount: selects.length,
+      options: selects.map(select => [...select.options].filter(o => o.value).map(o => o.textContent)),
+      labels: selects.map(select => select.getAttribute('aria-label')),
+    };
+  });
+  t.equal(bulk.selectCount, 3, 'Üç toplu seçim kutusu beklenirdi');
+  t.ok(bulk.labels.every(Boolean), 'Toplu seçim kutularında aria-label yok');
+  t.ok(bulk.options[0].length >= 1, 'Sayfa seçenekleri boş (sayaçlar üretilmemiş)');
+  t.ok(bulk.options[1].length >= 1, 'Alan adı seçenekleri boş');
+  t.ok(bulk.options[0][0].includes('('), 'Seçeneklerde görsel sayısı yok: ' + bulk.options[0][0]);
+
+  // Seçim yapılmadan uyarı
+  const empty = await page.evaluate(() => {
+    const root = document.getElementById('__image_scraper_v4__').shadowRoot;
+    root.querySelectorAll('.bulk-row button')[0].click();
+    return root.querySelector('.bulk-count')?.textContent || '';
+  });
+  t.includes(empty, 'seç', 'Seçimsiz durumda yönlendirme mesajı yok: ' + empty);
+
+  // Formata göre seç → tümü seçili, sonra kaldır → hiçbiri
+  const toggled = await page.evaluate(() => {
+    const root = document.getElementById('__image_scraper_v4__').shadowRoot;
+    const fmt = [...root.querySelectorAll('.bulk-row select')][2];
+    fmt.value = [...fmt.options].find(o => o.value)?.value || '';
+    // NOT: galeri sanallaştırılmıştır; DOM'daki kart sayısı seçili görsellerin
+    // tamamını göstermez. Bu yüzden seçim sayısı üstteki "Seçili görsel"
+    // metriğinden okunur (10/12 hatası bu varsayımdan kaynaklanmıştı).
+    // DİKKAT: .header-metric .metric-value ilk metrik "Benzersiz görsel"dir;
+    // seçili sayısı için etiket metnine göre aramak gerekir.
+    const selectedMetric = () => {
+      const metric = [...root.querySelectorAll('.header-metric')]
+        .find(m => (m.querySelector('.metric-label')?.textContent || '').includes('Seçili'));
+      return Number(metric?.querySelector('.metric-value')?.textContent || 0);
+    };
+    // Tarama sonrası görseller varsayılan olarak seçilidir. Testin anlamlı
+    // olması için önce seçimi sıfırla; sonra toplu seçimin eklediğini ölç.
+    const selectNone = [...root.querySelectorAll('.toolbar button')].find(b => b.textContent.includes('kaldır') && b.textContent.includes('Filtredekileri'));
+    selectNone?.click();
+    const before = selectedMetric();
+    root.querySelectorAll('.bulk-row button')[0].click();
+    const first = { msg: root.querySelector('.bulk-count')?.textContent || '', selected: selectedMetric(), before };
+    root.querySelectorAll('.bulk-row button')[0].click();
+    const second = { msg: root.querySelector('.bulk-count')?.textContent || '', selected: selectedMetric() };
+    return { first, second };
+  });
+  t.includes(toggled.first.msg, 'değiştirildi', 'Seçim mesajı beklenen biçimde değil: ' + toggled.first.msg);
+  t.ok(toggled.first.selected > 0, `Toplu seçim hiçbir görseli seçmedi (önce ${toggled.first.before}, sonra ${toggled.first.selected})`);
+  t.equal(toggled.second.selected, 0, `İkinci tıklama seçimi kaldırmadı (${toggled.second.selected} seçili kaldı)`);
+
+  // "Seçime ekle" tekrar seçer
+  const added = await page.evaluate(() => {
+    const root = document.getElementById('__image_scraper_v4__').shadowRoot;
+    root.querySelectorAll('.bulk-row button')[1].click();
+    const selected = Number([...root.querySelectorAll('.header-metric')].find(m => (m.querySelector('.metric-label')?.textContent || '').includes('Seçili'))?.querySelector('.metric-value')?.textContent || 0);
+    return { msg: root.querySelector('.bulk-count')?.textContent || '', selected };
+  });
+  t.includes(added.msg, 'eklendi', '"Seçime ekle" mesajı yok: ' + added.msg);
+  t.ok(added.selected > 0, '"Seçime ekle" görsel seçmedi');
+
+  t.equal(page.__pageErrors.length, 0, 'Toplu seçimde sayfa hatası: ' + page.__pageErrors[0]);
+  await page.close();
+}
+
+// ---------------------------------------------------------------------------
 if (only('Yedekleme')) {
   t.test('Ayar yedeği dışa/içe aktarma');
   const page = await openApp('/selector/');

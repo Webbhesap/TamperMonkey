@@ -326,3 +326,27 @@ details{border:1px solid #384157;background:#1a2130;border-radius:10px;padding:1
 .template-preview[hidden]{display:none}
 .template-preview[data-state=warn]{border-color:#6b5432;background:#221d15;color:#ffd9a3}
 .template-preview[data-state=ok]{border-color:#2f6b56;background:#173027;color:var(--isp-good)}
+
+/* --- Toplu seçim kısayolları -----------------------------------------------
+   Filtre çekmecesinde sayfa / alan adı / formata göre toplu seçim.
+   "Tümünü seç" yerine hedefli seçim: etkilenecek sayı işlemden hemen
+   sonra bildirilir. */
+.bulk-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:var(--isp-gap-2)}
+.bulk-row select{min-width:0;width:100%;min-height:var(--isp-tap)}
+.bulk-row button{min-height:var(--isp-tap);min-width:0}
+.bulk-count{margin:6px 0 0;font-size:var(--isp-fs-small);color:var(--isp-text-dim)}
+.bulk-count:empty{display:none}
+
+/* --- Filtre çekmecesinde etiket + onay kutusu ------------------------------
+   Sorun (ekran görüntüsünde): "Önizlemeleri yükle" onay kutusu, eski
+   `.filter-drawer-body .toolbar input{width:100%}` kuralına takılıp mor bir
+   bar gibi tüm genişliği kaplıyordu. Onay kutuları ve etiketleri artık
+   içeriğe göre boyutlanır. */
+.filter-drawer-body .toolbar label.compact{display:inline-flex;align-items:center;gap:8px;
+  width:auto;min-width:0;margin:0;padding:0 4px;white-space:nowrap;cursor:pointer}
+.filter-drawer-body .toolbar input[type=checkbox]{width:22px;height:22px;min-width:22px;flex:0 0 auto}
+.filter-drawer-body .toolbar label.compact span{font-size:var(--isp-fs-small);color:var(--isp-text-dim)}
+.filter-drawer-body .toolbar > button{min-height:var(--isp-tap)}
+/* Toplu seçim satırı iki kolonlu ızgarada tek başına kalsın (taşmasın). */
+.filter-drawer-body .bulk-row{grid-template-columns:repeat(2,minmax(0,1fr))}
+.filter-drawer-body .bulk-row button{min-width:0}

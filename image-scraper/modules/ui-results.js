@@ -246,6 +246,65 @@
       const previews = $el('input', { type: 'checkbox', checked: true });
       const previewLabel = $el('label', { class: 'compact' }); previewLabel.append(previews, $el('span', {}, 'Önizlemeleri yükle'));
       row3.append(selectAll, selectNone, slideshowLaunch, previewLabel); tools.appendChild(row3);
+      // ---------------------------------------------------------------------
+      // Toplu seçim kısayolları: "tümünü seç" çoğu zaman istenen şey değil.
+      // Kullanıcı belirli bir sayfanın / alan adının / formatın görsellerini
+      // seçebilsin. Her işlem etkilenecek sayıyı önce bildirir (yanlışlıkla
+      // binlerce görsel seçmeyi önler).
+      // ---------------------------------------------------------------------
+      const bulkRow = $el('div', { class: 'toolbar bulk-row' });
+      const bulkPage = $el('select', { 'aria-label': 'Sayfaya göre seçim' });
+      const bulkHost = $el('select', { 'aria-label': 'Alan adına göre seçim' });
+      const bulkFormat = $el('select', { 'aria-label': 'Formata göre seçim' });
+      const bulkCount = $el('p', { class: 'muted bulk-count', role: 'status', 'aria-live': 'polite' });
+      const pageOf = img => img.page || '';
+      const hostOf = img => { try { return new URL(img.url).host; } catch { return ''; } };
+      const formatOf = img => String(img.ext || '').toLowerCase() || 'bilinmiyor';
+      const uniqueValues = (list, getter) => [...new Set(list.map(getter).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'tr'));
+      const rebuildBulkOptions = () => {
+        const fill = (select, values, allLabel, getter, label) => {
+          const previous = select.value;
+          select.replaceChildren($el('option', { value: '' }, allLabel));
+          for (const value of values) select.appendChild($el('option', { value }, `${label(value)} (${images.filter(i => getter(i) === value).length})`));
+          // Seçim korunur: render() sırasında değer kaybolursa ikinci tıklama
+          // "seçim yapılmadı" der. Seçenek listesi değişse bile (ör. indirme
+          // sonrası format bilgisi eklenmesi) önceki değer geri yazılır.
+          select.value = [...select.options].some(o => o.value === previous) ? previous : '';
+        };
+        fill(bulkPage, uniqueValues(images, pageOf), 'Sayfa seç…', pageOf, v => { try { return new URL(v).pathname || v; } catch { return v; } });
+        fill(bulkHost, uniqueValues(images, hostOf), 'Alan adı seç…', hostOf, v => v);
+        fill(bulkFormat, uniqueValues(images, formatOf), 'Format seç…', formatOf, v => v);
+      };
+      const applyBulk = (getter, select, extend) => {
+        const value = select.value;
+        if (!value) { bulkCount.textContent = ''; return; }
+        const targets = images.filter(img => getter(img) === value);
+        if (!targets.length) { bulkCount.textContent = 'Eşleşen görsel yok.'; return; }
+        let changed = 0;
+        for (const img of targets) {
+          const next = extend ? true : !img.selected;
+          if (img.selected !== next) changed++;
+          img.selected = next;
+        }
+        bulkCount.textContent = extend
+          ? `${targets.length} görsel seçime eklendi (${changed} değişti).`
+          : `${targets.length} görselin seçimi değiştirildi.`;
+        grid.scrollTop = 0; render(); scheduleSave();
+      };
+      const bulkToggle = $el('button', { type: 'button', class: 'secondary' }, 'Aralığı seç / kaldır');
+      const bulkAdd = $el('button', { type: 'button', class: 'secondary' }, 'Seçime ekle');
+      // NOT: her üç seçici aynı anda değerlendirilir; hangisi doluysa o uygulanır.
+      // (Burada `||` zinciri kullanılmaz: applyBulk undefined döndüğü için
+      // üçünü birden çalıştırırdı.)
+      const runBulk = extend => {
+        const picks = [[pageOf, bulkPage], [hostOf, bulkHost], [formatOf, bulkFormat]].filter(([, select]) => select.value);
+        if (!picks.length) { bulkCount.textContent = 'Önce bir sayfa, alan adı veya format seç.'; return; }
+        for (const [getter, select] of picks) applyBulk(getter, select, extend);
+      };
+      bulkToggle.onclick = () => runBulk(false);
+      bulkAdd.onclick = () => runBulk(true);
+      bulkRow.append(bulkPage, bulkHost, bulkFormat, bulkToggle, bulkAdd);
+      tools.append(bulkRow, bulkCount);
       const explanation = $el('p', { class: 'muted' }, 'Filtreler yalnızca görünümü değiştirir; ZIP ve dışa aktarım filtre dışında kalanlar dâhil tüm seçili görselleri kullanır. Bilinmeyen dosya boyutları aralık filtresinde korunur. Önizleme, görsel sunucularına yeni istek gönderebilir.'); tools.appendChild(explanation);
       const grid = $el('div', { class: 'gallery', role: 'region', tabindex: 0, 'aria-label': 'Görsel galerisi' }); galleryPane.appendChild(grid);
       const gridNote = d.subtitle;
@@ -407,6 +466,9 @@
       const VIRTUAL_CARD_HEIGHT = 320, VIRTUAL_OVERSCAN_ROWS = 2;
       let galleryRenderPending = false, cachedFilteredList = null, cachedSelectionList = null;
       function render(refreshData = true) {
+        // Toplu seçim seçenekleri görsel listesine göre tazelenir; böylece
+        // yeni tarama veya filtre sonrası sayaçlar güncel kalır.
+        rebuildBulkOptions();
         const savedScrollTop = Number(grid.scrollTop) || 0;
         if (refreshData || !cachedFilteredList) cachedFilteredList = filtered();
         if (refreshData || !cachedSelectionList) cachedSelectionList = selection();

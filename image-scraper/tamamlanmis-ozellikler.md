@@ -38,6 +38,10 @@ eklenir. Amaç: hangi işin bittiğini tek bakışta görmek.
   kolonlara iner, kart yüksekliği 280px, etiket/kontrol hizalaması düzeltilir.
 - **Erişilebilirlik tercihleri:** `prefers-reduced-motion` (animasyonlar
   kapanır) ve `prefers-contrast: more` (kenarlık ve metin kontrastı artar).
+- **Filtre çekmecesi onay kutusu:** "Önizlemeleri yükle" onay kutusu, eski
+  `.filter-drawer-body .toolbar input{width:100%}` kuralına takılıp mor bir
+  bar gibi tüm genişliği kaplıyordu. Onay kutuları artık içeriğe göre
+  boyutlanır (22px).
 - **Denenip geri alınan:** Sabit (sticky) ayarlar altbilgisi. 480px'de
   ekranın ~%22'sini kaplayıp alttaki ayarları örtüyordu; normal akışa
   döndürüldü (gerekçe kodda yorum olarak duruyor).
@@ -54,6 +58,12 @@ eklenir. Amaç: hangi işin bittiğini tek bakışta görmek.
   yeniden denemede yalnızca onlar indirilir, başarılılar önbellekten gelir.
   Tüm arşivi yeniden indirmek büyük oturumlarda dakikalar sürüyordu.
 
+- **Toplu seçim kısayolları:** Filtre çekmecesinde sayfa / alan adı / formata
+  göre hedefli seçim. "Tümünü seç" yerine üç ayrı seçici; her seçenekte
+  eşleşen görsel sayısı yazar (ör. "`/basic/` (7)"). İki eylem: "Aralığı
+  seç / kaldır" (değiştir) ve "Seçime ekle" (yalnızca ekle). Seçim yapılmadan
+  tıklanırsa yönlendirme mesajı çıkar. Seçenekler `render()` içinde tazelenir
+  ve kullanıcı seçimi korunur.
 - **Dosya adı şablonu önizlemesi:** Şablonun üreteceği ad, kaydetmeden önce
   örnek veriyle gösterilir (`{sira}` = 001, `{sayfa}` = 1, `{orijinal_ad}` =
   ornek-gorsel, `{boyut}` = 1200x800). Uyarılan durumlar: bilinmeyen
@@ -68,7 +78,7 @@ eklenir. Amaç: hangi işin bittiğini tek bakışta görmek.
 
 ### Doğrulama
 Gerçek Chromium'da ölçüldü; sonuçlar regresyon testlerine bağlandı.
-- Statik 36/36 · Loader 56/56 · Tarayıcı 147/147 · ESLint temiz.
+- Statik 36/36 · Loader 56/56 · Tarayıcı 159/159 · ESLint temiz.
 - Takılma senaryosu (görsel `fetch` hiç çözülmez): 23 sn'de
   "⬇️ İndirme adımı 23 sn'dir ilerlemiyor…" + yeniden dene düğmesi.
 - Sekme satırı sayısı: 1280/1024/820/480px → hepsi **1 satır**.
