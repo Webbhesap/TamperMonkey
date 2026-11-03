@@ -114,6 +114,69 @@
         for (const blockedUrl of blockedPages) linkNotice.appendChild(linkOrText({ href:blockedUrl, target:'_blank', rel:'noopener noreferrer' }, '🔐 Sayfayı açıp doğrulamayı tamamla'));
       }
       linksPane.append(linkNotice, linkSubtabs, selectedLinksPane, duplicateLinksPane);
+      // Derin tarama raporu: kategori/içerik sayaçları ve içerik bazlı özet.
+      // Veri keşif aşamasından gelir (result.deepStats); derin tarama değilse
+      // bölüm hiç oluşturulmaz.
+      const deepStats = result.deepStats || restored?.deepStats || null;
+      if (deepStats) {
+        const articleList = Array.isArray(deepStats.articles) ? deepStats.articles : [];
+        const imageCountFor = article => {
+          const seen = new Set();
+          let count = 0;
+          for (const image of images) {
+            const sources = [image.articleUrl, ...(Array.isArray(image.articleUrls) ? image.articleUrls : [])].filter(Boolean);
+            if (!sources.includes(article.url)) continue;
+            if (seen.has(image.url)) continue;
+            seen.add(image.url); count++;
+          }
+          return count;
+        };
+        const duplicateCountFor = article => duplicateRecords.reduce((sum, record) => {
+          const sources = Array.isArray(record.articleUrls) ? record.articleUrls : [];
+          return sources.includes(article.url) ? sum + record.count : sum;
+        }, 0);
+        const report = $el('details', { class: 'deep-report', open: true });
+        report.appendChild($el('summary', {}, 'Derin tarama özeti'));
+        const grid = $el('div', { class: 'deep-report-grid', role: 'list', 'aria-label': 'Derin tarama sayaçları' });
+        const totalArticlePages = articleList.reduce((sum, article) => sum + (Number(article.pages) || 0), 0);
+        for (const [value, label] of [
+          [deepStats.categoryPages || 0, 'kategori sayfası'],
+          [deepStats.candidates || 0, 'aday bağlantı'],
+          [deepStats.acceptedLinks ?? articleList.length, 'içerik bağlantısı'],
+          [articleList.length, 'içerik'],
+          [totalArticlePages, 'içerik sayfası'],
+          [images.length, 'benzersiz görsel'],
+        ]) {
+          const cell = $el('div', { class: 'deep-report-cell', role: 'listitem' });
+          cell.append($el('strong', {}, String(value)), $el('span', {}, label));
+          grid.appendChild(cell);
+        }
+        report.appendChild(grid);
+        const rejected = deepStats.rejected || {};
+        report.appendChild($el('p', { class: 'muted' },
+          `Bağlantı keşfi: ${deepStats.selector || 'otomatik'} · ${rejected.navigation || 0} gezinme/sayfalama, ${rejected.indexLike || 0} arşiv ve ${rejected.duplicate || 0} tekrar bağlantısı elendi.`));
+        const limits = deepStats.settings || {};
+        if (limits.maxArticles || limits.maxArticlePages || limits.maxCategories) {
+          report.appendChild($el('p', { class: 'muted' },
+            `Sınırlar: kategori ${limits.maxCategories || '∞'} · içerik ${limits.maxArticles || '∞'} · içerik sayfası ${limits.maxArticlePages || '∞'}`));
+        }
+        const articleRows = $el('div', { class: 'deep-article-list', 'aria-label': 'İçerik bazlı tarama özeti' });
+        if (!articleList.length) articleRows.appendChild($el('p', { class: 'muted' }, 'İçerik bağlantısı bulunamadı.'));
+        for (const article of articleList) {
+          const row = $el('div', { class: 'deep-article-row', 'data-article': article.url || '' });
+          const title = $el('div', { class: 'deep-article-title' });
+          title.appendChild(linkOrText({ href: article.url, target: '_blank', rel: 'noopener noreferrer' }, article.topic || article.url || 'İçerik'));
+          const meta = $el('div', { class: 'deep-article-meta' });
+          meta.append($el('span', {}, `${Number(article.pages) || 0} sayfa`), $el('span', {}, `${imageCountFor(article)} görsel`));
+          const duplicatesSkipped = duplicateCountFor(article);
+          if (duplicatesSkipped) meta.appendChild($el('span', {}, `${duplicatesSkipped} tekrar atlandı`));
+          if (article.error) meta.appendChild($el('span', { class: 'deep-article-error' }, `⚠ ${article.error}`));
+          row.append(title, meta);
+          articleRows.appendChild(row);
+        }
+        report.appendChild(articleRows);
+        selectedLinksPane.appendChild(report);
+      }
       const pageDetails = $el('details'); pageDetails.appendChild($el('summary', {}, 'Taranan sayfalar'));
       for (const pageUrl of pages) pageDetails.appendChild($el('p', { class: 'muted' }, pageUrl));
       selectedLinksPane.appendChild(pageDetails);

@@ -127,6 +127,52 @@ function articlePage(id, part = 1) {
     ${part < 2 ? `<nav class="pagination"><a class="next" href="/article/${id}/${part + 1}">Sonraki sayfa</a></nav>` : `<nav class="pagination"><a href="/category/?page=1">Kategoriye dön</a></nav>`}`);
 }
 
+// Derin tarama sınır denetimi: sayfalama aynı içerikte kalmıyorsa durmalı.
+function driftListingPage() {
+  return page('Kayma listesi', `<h1>Kayma listesi</h1><main>
+    <article class="card"><h2><a href="/drift/1">Kayma testi başlığı</a></h2><p>Özet 1</p></article>
+    <article class="card"><h2><a href="/navdrift/1">Gezinme kayması</a></h2><p>Özet 2</p></article>
+  </main>`);
+}
+function driftArticlePage(part = 1) {
+  if (part === 2) {
+    return page('Farklı içerik', `<h1>Tamamen farklı içerik</h1>
+      <article>${img('drift-2.png')}<p>Bu sayfa aynı içeriğin devamı değil.</p></article>`);
+  }
+  return page('Kayma testi', `<h1>Kayma testi başlığı</h1>
+    <article>${img('drift-1.png')}<p>Birinci bölüm</p></article>
+    <nav class="pagination"><a rel="next" href="/drift/1/2">Sonraki sayfa</a></nav>`);
+}
+function navDriftArticlePage() {
+  return page('Gezinme kayması', `<h1>Gezinme kayması</h1>
+    <article>${img('navdrift-1.png')}<p>Sayfalama kategoriye dönüyor.</p></article>
+    <nav class="pagination"><a rel="next" href="/category/?page=2">Sonraki</a></nav>`);
+}
+// İçerik bazlı tekrar sayacı: aynı görsel alt sayfalarda yeniden geçerse.
+function dupeListingPage() {
+  return page('Tekrar listesi', `<h1>Tekrar listesi</h1><main>
+    <article class="card"><h2><a href="/dupe-article/1">Tekrar içeriği</a></h2><p>Özet</p></article>
+  </main>`);
+}
+function dupeArticlePage(part = 1) {
+  return page('Tekrar içeriği', `<h1>Tekrar içeriği</h1>
+    <article>${img('red-400x300.png')}<p>Bölüm ${part}</p></article>
+    ${part < 2 ? `<nav class="pagination"><a rel="next" href="/dupe-article/1?page=2">Sonraki sayfa</a></nav>` : ''}`);
+}
+
+// Yarıda kalan keşif kaydı: yavaş yanıtlar iptal için zaman tanır.
+function slowListingPage() {
+  return page('Yavaş liste', `<h1>Yavaş liste</h1><main>
+    <article class="card"><h2><a href="/slow-article/slow-1">Yavaş içerik 1 başlığı</a></h2><p>Özet 1</p></article>
+    <article class="card"><h2><a href="/slow-article/slow-2">Yavaş içerik 2 başlığı</a></h2><p>Özet 2</p></article>
+  </main>`);
+}
+function slowArticlePage(id, part = 1) {
+  return page(`Yavaş içerik ${id}`, `<h1>Yavaş içerik ${id} başlığı</h1>
+    <article>${img(`article-slow-${id}-${part}.png`)}<p>Yavaş içerik ${id} bölüm ${part}</p></article>
+    ${part < 2 ? `<nav class="pagination"><a rel="next" href="/slow-article/slow-${id}?page=${part + 1}">Sonraki sayfa</a></nav>` : ''}`);
+}
+
 function challengeLinkPage() {
   return page('Bağlantılı sayfa', `<h1>Bağlantılı sayfa</h1><article>${img('red-400x300.png')}</article>
     <nav class="pagination"><a rel="next" href="/challenge/">Sonraki</a></nav>`);
@@ -177,7 +223,7 @@ function serveImage(req, res, url) {
     res.end(fs.readFileSync(path.join(IMAGE_DIR, 'blue-320x240.png'))); return;
   }
   // Deterministic generated images for pagination / article / dedupe tests.
-  const generated = /^((?:page|article)-[\w-]+)\.png$/.exec(name);
+  const generated = /^((?:page|article|drift|navdrift)-[\w-]+)\.png$/.exec(name);
   if (generated) {
     const seed = generated[1];
     const color = [...seed].reduce((a, c) => (a * 33 + c.charCodeAt(0)) % 0xffffff, 7);
@@ -238,6 +284,20 @@ export async function startSite() {
     if (p.startsWith('/article/')) {
       const m = /\/article\/(\d+)(?:\/(\d+))?$/.exec(p);
       return m ? html(articlePage(m[1], Number(m[2] || 1))) : send(404, 'text/plain', 'yok');
+    }
+    if (p === '/drift/') return html(driftListingPage());
+    if (p === '/drift/1') return html(driftArticlePage(1));
+    if (p === '/drift/1/2') return html(driftArticlePage(2));
+    if (p === '/navdrift/1') return html(navDriftArticlePage());
+    if (p === '/dupe-listing/') return html(dupeListingPage());
+    if (p === '/dupe-article/1') return html(dupeArticlePage(Number(url.searchParams.get('page') || 1)));
+    if (p === '/slow-listing/') return html(slowListingPage());
+    if (p.startsWith('/slow-article/')) {
+      const m = /\/slow-article\/slow-(\d+)\/?$/.exec(p);
+      if (!m) return send(404, 'text/html; charset=utf-8', notFoundPage());
+      const body = slowArticlePage(m[1], Number(url.searchParams.get('page') || 1));
+      setTimeout(() => { try { html(body); } catch { /* client went away */ } }, 350);
+      return;
     }
     if (p === '/challenge/') {
       send(403, 'text/html; charset=utf-8', challengeBody(), { 'cf-mitigated': 'challenge' }); return;

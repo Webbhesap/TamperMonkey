@@ -333,6 +333,119 @@ if (only('Derin tarama')) {
 }
 
 // ---------------------------------------------------------------------------
+// Derin tarama sınırları: sayfalama aynı içerikte kalmıyorsa durmalı ve özet
+// sayaçları (kategori/aday/içerik/sayfa/görsel) raporda görünmeli.
+if (only('Derin tarama sınırları')) {
+  t.test('Derin tarama: içerik sınırı ve özet sayaçları');
+  const page = await openApp('/drift/');
+  await setStorage(page, { isp_config: JSON.stringify({ DEEP_CRAWL: true, MAX_PAGES: 1, MAX_ARTICLES: 0, ARTICLE_MAX_PAGES: 0, MIN_WIDTH: 0, MIN_HEIGHT: 0, STOP_DUPLICATE_PAGES: true }) });
+  await runScan(page, { timeout: 90000 });
+  const report = await page.evaluate(() => {
+    const root = document.getElementById('__image_scraper_v4__').shadowRoot;
+    return {
+      text: root.textContent,
+      counters: [...root.querySelectorAll('.deep-report-cell strong')].map(node => node.textContent.trim()),
+      rows: [...root.querySelectorAll('.deep-article-row')].map(row => row.textContent.trim()),
+      metrics: [...root.querySelectorAll('.metric-value')].map(node => node.textContent.trim()),
+      cards: [...root.querySelectorAll('.image-card .meta')].map(node => node.textContent),
+    };
+  });
+  t.includes(report.text, 'farklı bir içeriğe', 'Başlık değişince içerik sınırında durulmalı');
+  t.includes(report.text, 'kategori/arşiv sayfasına', 'Arşive dönen sayfalama içeriğe eklenmemeli');
+  t.equal(report.rows.length, 2, 'İçerik bazlı özet satır sayısı');
+  t.equal(report.counters[0], '1', 'Kategori sayfası sayacı');
+  t.equal(report.counters[2], '2', 'İçerik bağlantısı sayacı');
+  t.equal(report.counters[3], '2', 'İçerik sayacı');
+  t.equal(report.counters[4], '2', 'İçerik sayfası sayacı');
+  t.equal(report.counters[5], '2', 'Benzersiz görsel sayacı');
+  t.equal(report.metrics[1], '2', 'Taranan sayfa metriği sınırla uyumlu');
+  t.equal(report.cards.length, 2, 'Sınırdan sonraki sayfanın görseli alınmamalı');
+  t.ok(report.rows.every(row => row.includes('1 sayfa')), 'Her içerik 1 sayfa olarak raporlanmalı');
+  t.ok(report.cards.some(card => card.includes('Konu: Kayma testi başlığı')), 'İçerik konusu kartlarda görünmeli');
+  await page.close();
+}
+
+// ---------------------------------------------------------------------------
+// İçerik bazlı tekrar sayacı: aynı görsel bir içeriğin alt sayfalarında
+// yeniden geçtiğinde özet satırında "tekrar atlandı" olarak görünmeli.
+if (only('İçerik tekrarı')) {
+  t.test('Derin tarama: içerik bazlı tekrar sayacı');
+  const page = await openApp('/dupe-listing/');
+  await setStorage(page, { isp_config: JSON.stringify({ DEEP_CRAWL: true, MAX_PAGES: 1, MAX_ARTICLES: 0, ARTICLE_MAX_PAGES: 0, MIN_WIDTH: 0, MIN_HEIGHT: 0, STOP_DUPLICATE_PAGES: false }) });
+  await runScan(page, { timeout: 60000 });
+  const summary = await page.evaluate(() => {
+    const root = document.getElementById('__image_scraper_v4__').shadowRoot;
+    return {
+      rows: [...root.querySelectorAll('.deep-article-row')].map(row => row.textContent.trim()),
+      metrics: [...root.querySelectorAll('.metric-value')].map(node => node.textContent.trim()),
+    };
+  });
+  t.equal(summary.metrics[0], '1', 'Aynı görsel bir kez sayılmalı');
+  t.equal(summary.metrics[2], '1', 'Tekrar sayısı metriği');
+  t.includes(summary.rows[0] || '', '2 sayfa', 'İçerik iki sayfa göstermeli');
+  t.includes(summary.rows[0] || '', '1 tekrar atlandı', 'İçerik bazlı tekrar sayısı');
+  await page.close();
+}
+
+// ---------------------------------------------------------------------------
+// Keşif önizlemesi: aday bağlantı sayısı ve kullanılan keşif yöntemi
+// görseller indirilmeden önce gösterilir.
+if (only('Keşif sayaçları')) {
+  t.test('Derin tarama: keşif önizlemesinde sayaçlar');
+  const page = await openApp('/category/');
+  await setStorage(page, { isp_config: JSON.stringify({ DEEP_CRAWL: true, MAX_PAGES: 1, MAX_ARTICLES: 2, ARTICLE_MAX_PAGES: 2, PREVIEW_PAGE_QUEUE: true, MIN_WIDTH: 0, MIN_HEIGHT: 0 }) });
+  await clickInUI(page, '.launch [data-isp-action="scan"]');
+  await waitText(page, 'Taranacak sayfalar');
+  const dialogText = await page.evaluate(() => [...document.getElementById('__image_scraper_v4__').shadowRoot.querySelectorAll('.overlay')].map(node => node.textContent).join(' '));
+  t.includes(dialogText, 'kategori sayfası', 'Önizleme kategori sayfası sayısını göstermeli');
+  t.includes(dialogText, 'içerik', 'Önizleme içerik sayısını göstermeli');
+  t.includes(dialogText, 'Keşif yöntemi', 'Önizleme keşif yöntemini göstermeli');
+  await page.evaluate(() => {
+    const root = document.getElementById('__image_scraper_v4__').shadowRoot;
+    [...root.querySelectorAll('button')].find(button => button.textContent.includes('Seçilenleri tara')).click();
+  });
+  await page.waitForFunction(() => [...document.getElementById('__image_scraper_v4__').shadowRoot.querySelectorAll('.overlay h2')].some(node => node.textContent === 'Tarama sonuçları'), { timeout: 60000 });
+  const counters = await page.evaluate(() => [...document.getElementById('__image_scraper_v4__').shadowRoot.querySelectorAll('.deep-report-cell strong')].map(node => node.textContent.trim()));
+  t.equal(counters[3], '2', 'İçerik sayacı önizlemeden sonra da doğru');
+  await page.close();
+}
+
+// ---------------------------------------------------------------------------
+// Keşif yarıda kalırsa: tamamlanan kategori ve içerikler kaydedilir, devam
+// ederken yeniden keşfedilmez (yalnızca kalan içerik açılır).
+if (only('Derin tarama devam')) {
+  t.test('Derin tarama: keşif yarıda kalınca kaldığı yerden devam eder');
+  const page = await openApp('/slow-listing/');
+  await setStorage(page, { isp_config: JSON.stringify({ DEEP_CRAWL: true, MAX_PAGES: 1, MAX_ARTICLES: 0, ARTICLE_MAX_PAGES: 2, SAVE_SCAN_PROGRESS: true, CHECK_REAL_SIZE: false, MIN_WIDTH: 0, MIN_HEIGHT: 0 }) });
+  await clickInUI(page, '.launch [data-isp-action="scan"]');
+  await page.waitForFunction(() => (document.getElementById('__image_scraper_v4__')?.shadowRoot?.textContent || '').includes('İçerik 2/2'), { timeout: 30000, polling: 40 });
+  await clickInUI(page, '.launch [data-isp-action="scan"]');
+  await page.waitForFunction(() => !document.getElementById('__image_scraper_v4__').shadowRoot.querySelector('.launch [data-isp-action="scan"]').textContent.includes('Taranıyor'), { timeout: 20000 });
+  const state = JSON.parse(await getStorage(page, 'isp_scan_state_v1') || 'null');
+  t.equal(state?.phase, 'discovery', 'Keşif aşaması kaydı yazılmalı');
+  t.equal(state?.deepState?.articles?.length, 2, 'Keşfedilen içerik sayısı kayıtta');
+  t.equal(state?.deepState?.articles?.[0]?.pages?.length, 2, 'Tamamlanan içeriğin alt sayfaları kayıtta');
+  const requests = [];
+  page.on('request', request => { if (request.url().includes('/slow-article/')) requests.push(request.url()); });
+  await runScan(page, { timeout: 90000 });
+  const firstIndex = fragment => requests.findIndex(url => url.includes(fragment));
+  t.ok(firstIndex('/slow-article/slow-2') >= 0, 'Kalan içerik istendi');
+  t.ok(firstIndex('/slow-article/slow-2') < firstIndex('/slow-article/slow-1'), 'Devam ederken tamamlanan içerik yeniden keşfedilmedi');
+  const result = await page.evaluate(() => {
+    const root = document.getElementById('__image_scraper_v4__').shadowRoot;
+    return {
+      metrics: [...root.querySelectorAll('.metric-value')].map(node => node.textContent.trim()),
+      rows: [...root.querySelectorAll('.deep-article-row')].map(row => row.textContent.trim()),
+    };
+  });
+  t.equal(result.metrics[1], '4', 'Devam eden tarama dört içerik sayfası toplamalı');
+  t.equal(result.metrics[0], '4', 'Devam eden tarama dört görsel toplamalı');
+  t.ok(result.rows.every(row => row.includes('2 sayfa')), 'İçerik özeti ikişer sayfa göstermeli');
+  t.equal(await getStorage(page, 'isp_scan_state_v1'), null, 'Başarılı tarama kaydı temizlemeli');
+  await page.close();
+}
+
+// ---------------------------------------------------------------------------
 if (only('Sayfa kuyruğu')) {
   t.test('Sayfa önizleme kuyruğu: seçim yapılabilir ve yalnız seçilen taranır');
   const page = await openApp('/paged-query/');

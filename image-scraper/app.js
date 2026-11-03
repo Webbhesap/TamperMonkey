@@ -415,34 +415,95 @@
     }
     return { pages, warnings, blocked };
   }
+  // Kategori/arşiv/etiket yolları içerik sayfası değildir; keşifte bunlara
+  // verilen puan düşürülür, içerik sayfalamasında ise sınır kabul edilir.
+  const INDEX_PATH_HINT = /\/(?:category|categories|tag|tags|archive|archives|kategori|kategoriler|etiket|author|yazar|search|arama)\//i;
+  /**
+   * Bir bağlantının "içerik sayfası olma" olasılığını puanlar. Amaç yalnızca
+   * sıralama değil, gezinme/arşiv bağlantılarının içerik kuyruğuna girmesini
+   * engellemektir; bu yüzden negatif puan alan adaylar elenir.
+   */
+  function articleLinkScore(anchor, url, label) {
+    let score = 0;
+    if (anchor.closest('article, .card, .post, .entry, .teaser, .item')) score += 4;
+    else if (anchor.closest('main, #content')) score += 2;
+    if (anchor.closest('h1, h2, h3, h4')) score += 2;
+    if (label.length >= 12) score += 1;
+    else if (label.length < 4) score -= 2;
+    if (INDEX_PATH_HINT.test(`${url.pathname}/`)) score -= 4;
+    if (url.pathname === '/') score -= 4;
+    if (url.pathname.split('/').filter(Boolean).length >= 2) score += 1;
+    return score;
+  }
   function discoverArticleLinks(doc, pageUrl, config, categoryUrls) {
     const base = documentBase(doc, pageUrl);
     let anchors = [];
+    const stats = { selector: '', candidates: 0, accepted: 0, navigation: 0, indexLike: 0, duplicate: 0, unparsable: 0 };
     if (config.ARTICLE_LINK_SELECTOR) {
       try { anchors = [...doc.querySelectorAll(config.ARTICLE_LINK_SELECTOR)].flatMap(node => node.matches('a[href]') ? [node] : [...node.querySelectorAll('a[href]')]); }
       catch (e) { throw new Error(`İçerik bağlantısı seçicisi geçersiz: ${e.message}`); }
+      stats.selector = 'Kullanıcı CSS seçicisi';
     } else {
       const preferred = 'article a[href], .entry-title a[href], .post-title a[href], h2 a[href], h3 a[href], main a[href], #content a[href]';
       anchors = [...doc.querySelectorAll(preferred)];
-      if (!anchors.length) anchors = [...doc.querySelectorAll('a[href]')];
+      if (anchors.length) stats.selector = 'Yapısal ipuçları (article/başlık/main)';
+      else { anchors = [...doc.querySelectorAll('a[href]')]; stats.selector = 'Tüm bağlantılar (yedek)'; }
     }
-    const found = [], seen = new Set();
+    const best = new Map();
     for (const anchor of anchors) {
-      if (anchor.closest('nav, header, footer, aside, .pagination, .pager, .page-numbers, .wp-pagenavi, [role="navigation"]')) continue;
+      if (anchor.closest('nav, header, footer, aside, .pagination, .pager, .page-numbers, .wp-pagenavi, [role="navigation"]')) { stats.navigation++; continue; }
       const raw = anchor.getAttribute('href'); if (!raw || /^\s*(?:#|javascript:|mailto:|tel:)/i.test(raw)) continue;
+      stats.candidates++;
       try {
         const url = new URL(raw, base); url.hash = '';
         if (url.origin !== location.origin || !['http:', 'https:'].includes(url.protocol)) continue;
         const href = url.href;
-        if (href === pageUrl || categoryUrls.has(href) || seen.has(href)) continue;
-        if (url.searchParams.has('page') || url.searchParams.has('paged') || url.searchParams.has('page_num') || /\/(?:page|paged)\/\d+\/?$/i.test(url.pathname) || /\/(?:\d{1,3})\/?$/.test(url.pathname) && /(?:page|category|tag|archive)/i.test(url.pathname)) continue;
+        if (href === pageUrl || categoryUrls.has(href)) { stats.navigation++; continue; }
+        if (url.searchParams.has('page') || url.searchParams.has('paged') || url.searchParams.has('page_num') || /\/(?:page|paged)\/\d+\/?$/i.test(url.pathname) || /\/(?:\d{1,3})\/?$/.test(url.pathname) && /(?:page|category|tag|archive)/i.test(url.pathname)) { stats.navigation++; continue; }
         if (/\.(?:jpg|jpeg|png|gif|webp|svg|pdf|zip|mp4|mp3)$/i.test(url.pathname)) continue;
         const label = `${anchor.textContent || ''} ${anchor.getAttribute('title') || ''} ${anchor.getAttribute('aria-label') || ''}`.replace(/\s+/g, ' ').trim();
-        if (/^(?:next|previous|prev|sonraki|önceki|ileri|geri|\d{1,3}|read more|devamını oku|tümünü göster|all pages)$/i.test(label)) continue;
-        seen.add(href); found.push({ url: href, label });
-      } catch {}
+        if (/^(?:next|previous|prev|sonraki|önceki|ileri|geri|\d{1,3}|read more|devamını oku|tümünü göster|all pages)$/i.test(label)) { stats.navigation++; continue; }
+        const score = articleLinkScore(anchor, url, label);
+        if (score < 0) { stats.indexLike++; continue; }
+        const previous = best.get(href);
+        if (previous) {
+          stats.duplicate++;
+          if (previous.score < score) best.set(href, { url: href, label, score });
+          continue;
+        }
+        best.set(href, { url: href, label, score });
+      } catch { stats.unparsable++; }
     }
-    return found;
+    const entries = [...best.values()].sort((a, b) => b.score - a.score || a.url.localeCompare(b.url));
+    stats.accepted = entries.length;
+    return { entries, stats };
+  }
+  /**
+   * İçerik sayfalamasının aynı içerikte kaldığını doğrular. Yalnızca URL
+   * yapısına bakmak `.../icerik/1` ile `.../icerik/2` gibi ayrı içerikleri
+   * karıştırabilir; bu yüzden sayfa başlığı da karşılaştırılır.
+   */
+  function titleKey(value) {
+    return String(value || '').toLocaleLowerCase('tr')
+      .replace(/\s+/g, ' ')
+      .replace(/\b(?:sayfa|page|bölüm|bolum|part)\s*\d+(?:\s*\/\s*\d+)?\b/g, ' ')
+      .replace(/[|–—]\s*[^|–—]{0,40}$/, '')
+      .replace(/\s+/g, ' ').trim();
+  }
+  function sameContentTitle(current, next) {
+    const a = titleKey(current), b = titleKey(next);
+    if (!a || !b) return true; // Başlık yoksa yapısal kontroller yeterli.
+    if (a === b) return true;
+    const short = a.length <= b.length ? a : b, long = short === a ? b : a;
+    return short.length >= 12 && long.startsWith(short);
+  }
+  function indexLikeUrl(value) {
+    try {
+      const url = new URL(value);
+      if (INDEX_PATH_HINT.test(`${url.pathname}/`)) return true;
+      const page = url.searchParams.get('page') || url.searchParams.get('paged') || '';
+      return /^(?:all|showall|viewall|tümü|tumu)$/i.test(page);
+    } catch { return false; }
   }
   function articleTopic(doc, config) {
     const selectors = [config.ARTICLE_TITLE_SELECTOR, 'h1', '.entry-title', 'article h2', 'title'].filter(Boolean);
@@ -454,24 +515,58 @@
     }
     return '';
   }
-  async function discoverDeepQueue(c, signal, status) {
-    const warnings = [], blocked = [], categoryUrls = new Set(), articleMap = new Map();
-    let currentUrl = location.href.split('#')[0];
-    for (let i = 0; c.MAX_PAGES === 0 || i < c.MAX_PAGES; i++) {
+  /**
+   * Derin tarama keşfi: kategori sayfaları → içerik bağlantıları → içerik alt
+   * sayfaları. Keşif uzun sürebildiği için her kategori ve her içerikten sonra
+   * `options.checkpoint` çağrılır; yarıda kalan keşif `options.previous` ile
+   * kaldığı yerden sürdürülür (tamamlanan içerikler yeniden açılmaz).
+   */
+  async function discoverDeepQueue(c, signal, status, options = {}) {
+    const previous = options.previous || null;
+    const checkpoint = typeof options.checkpoint === 'function' ? options.checkpoint : () => {};
+    const warnings = [], blocked = [], categoryUrls = new Set(), articleMap = new Map(), docCache = new Map();
+    const linkStats = { selector: '—', candidates: 0, accepted: 0, navigation: 0, indexLike: 0, duplicate: 0 };
+    for (const url of Array.isArray(previous?.categoryUrls) ? previous.categoryUrls : []) if (typeof url === 'string') categoryUrls.add(url);
+    for (const article of Array.isArray(previous?.articles) ? previous.articles : []) {
+      if (!article?.url) continue;
+      articleMap.set(article.url, { url: article.url, label: article.label || '', topic: article.topic || '', pages: Array.isArray(article.pages) ? article.pages.map(p => ({ ...p })) : [], error: article.error || '' });
+    }
+    if (previous?.linkStats && typeof previous.linkStats === 'object') Object.assign(linkStats, previous.linkStats);
+    let categoryPageCount = Number.isSafeInteger(previous?.categoryPages) ? previous.categoryPages : 0;
+    const saveCheckpoint = (phase, extra = {}) => {
+      try {
+        checkpoint({
+          phase, savedAt: Date.now(),
+          categoryPages: categoryPageCount,
+          articleIndex: Number.isSafeInteger(extra.articleIndex) ? extra.articleIndex : 0,
+          categoryUrls: [...categoryUrls],
+          nextCategoryUrl: extra.nextCategoryUrl || null,
+          articles: [...articleMap.values()].map(a => ({ url: a.url, label: a.label, topic: a.topic, pages: a.pages, error: a.error })),
+          linkStats: { ...linkStats },
+        });
+      } catch { /* kayıt hatası taramayı durdurmamalı */ }
+    };
+    // Kategori aşaması: daha önce tamamlanmışsa doğrudan içerik aşamasına geçilir.
+    let currentUrl = previous?.phase === 'categories' ? (previous.nextCategoryUrl || '') : (previous ? '' : location.href.split('#')[0]);
+    for (let i = categoryPageCount; currentUrl && (c.MAX_PAGES === 0 || i < c.MAX_PAGES); i++) {
       checkAbort(signal);
       if (categoryUrls.has(currentUrl)) break;
       let doc, actualUrl = currentUrl;
-      if (i === 0) doc = document;
+      if (i === 0 && !previous && currentUrl === location.href.split('#')[0]) doc = document;
       else {
         try { const page = await fetchPage(currentUrl, c, signal); doc = page.doc; actualUrl = page.url.split('#')[0]; }
         catch (e) { if (isAbort(e)) throw e; warnings.push(`Kategori sayfası alınamadı: ${currentUrl} (${e.message})`); if (e.status === 403) blocked.push(currentUrl); break; }
       }
       if (categoryUrls.has(actualUrl)) break;
       categoryUrls.add(currentUrl); categoryUrls.add(actualUrl);
+      categoryPageCount++;
       status(`🗂️ Kategori sayfası ${i + 1}${c.MAX_PAGES ? `/${c.MAX_PAGES}` : ''} · içerik bağlantıları bulunuyor…`);
       try {
-        for (const entry of discoverArticleLinks(doc, actualUrl, c, categoryUrls)) {
-          if (!articleMap.has(entry.url)) articleMap.set(entry.url, entry);
+        const discovery = discoverArticleLinks(doc, actualUrl, c, categoryUrls);
+        linkStats.selector = discovery.stats.selector;
+        for (const key of ['candidates', 'accepted', 'navigation', 'indexLike', 'duplicate']) linkStats[key] += discovery.stats[key] || 0;
+        for (const entry of discovery.entries) {
+          if (!articleMap.has(entry.url)) articleMap.set(entry.url, { url: entry.url, label: entry.label, topic: '', pages: [], error: '' });
           if (c.MAX_ARTICLES > 0 && articleMap.size >= c.MAX_ARTICLES) break;
         }
       } catch (e) { warnings.push(e.message); break; }
@@ -482,34 +577,76 @@
         break;
       }
       currentUrl = next;
+      saveCheckpoint('categories', { nextCategoryUrl: currentUrl });
     }
-    const pageQueue = [], articleNextConfig = { ...c, PAGINATION_MODE: 'auto', NEXT_SELECTOR: c.ARTICLE_NEXT_SELECTOR || '' };
+    const articleNextConfig = { ...c, PAGINATION_MODE: 'auto', NEXT_SELECTOR: c.ARTICLE_NEXT_SELECTOR || '' };
     const articles = [...articleMap.values()];
-    for (let ai = 0; ai < articles.length; ai++) {
+    const startIndex = Number.isSafeInteger(previous?.articleIndex) ? Math.min(previous.articleIndex, articles.length) : 0;
+    for (let ai = startIndex; ai < articles.length; ai++) {
       checkAbort(signal);
       const article = articles[ai];
+      if (article.pages.length) continue; // Denetim noktasından gelen tamamlanmış içerik.
       status(`📚 İçerik ${ai + 1}/${articles.length} açılıyor…`);
-      let current = article.url, topic = '', count = 0;
+      let current = article.url, topic = article.topic || '', count = 0;
       const visited = new Set();
       while (current && (c.ARTICLE_MAX_PAGES === 0 || count < c.ARTICLE_MAX_PAGES)) {
         checkAbort(signal);
         if (visited.has(current)) break;
         let doc, actualUrl = current;
         try { const page = await fetchPage(current, c, signal); doc = page.doc; actualUrl = page.url.split('#')[0]; }
-        catch (e) { if (isAbort(e)) throw e; warnings.push(`İçerik sayfası alınamadı: ${current} (${e.message})`); if (e.status === 403) blocked.push(current); break; }
+        catch (e) {
+          if (isAbort(e)) throw e;
+          warnings.push(`İçerik sayfası alınamadı: ${current} (${e.message})`);
+          article.error = e.message;
+          if (e.status === 403) blocked.push(current);
+          break;
+        }
         if (visited.has(actualUrl)) break;
         visited.add(current); visited.add(actualUrl);
-        if (!topic) topic = articleTopic(doc, c) || article.label || fallbackTopic(article.url);
-        pageQueue.push({ url: actualUrl, doc, reason: count === 0 ? `İçerik: ${topic}` : `İçerik alt sayfası ${count + 1}: ${topic}`, articleUrl: article.url, topic, articlePage: count + 1 });
+        const pageTopic = articleTopic(doc, c);
+        // Aynı içerikte kalma denetimi: sayfalama farklı bir başlığa atlıyorsa
+        // o sayfa bu içeriğin parçası değildir; içeriğe karıştırılmaz.
+        if (count > 0 && !sameContentTitle(topic, pageTopic)) {
+          warnings.push(`“${topic}” içeriğinde sayfalama farklı bir içeriğe (“${pageTopic || fallbackTopic(actualUrl)}”) gidiyordu; içerik sınırında duruldu.`);
+          break;
+        }
+        if (!topic) topic = pageTopic || article.label || fallbackTopic(article.url);
+        article.topic = topic;
+        article.pages.push({ url: actualUrl, reason: count === 0 ? `İçerik: ${topic}` : `İçerik alt sayfası ${count + 1}: ${topic}`, articleUrl: article.url, topic, articlePage: count + 1 });
+        docCache.set(actualUrl, doc);
         count++;
         const next = nextPage(doc, actualUrl, visited, articleNextConfig, count);
         if (!next) break;
+        // İçerik sayfalaması kategori/arşiv sayfasına dönüyorsa içerik biter.
+        if (indexLikeUrl(next)) {
+          warnings.push(`“${topic}” içeriğinin sayfalaması kategori/arşiv sayfasına gidiyordu; içerik sınırında duruldu.`);
+          break;
+        }
         current = next;
       }
       if (c.ARTICLE_MAX_PAGES > 0 && count === c.ARTICLE_MAX_PAGES) warnings.push(`“${topic || article.url}” içeriği ${count} sayfalık sınırda durdu.`);
+      if (!count) warnings.push(`“${article.topic || article.label || article.url}” içeriğinden sayfa alınamadı; özet 0 sayfa olarak işaretlendi.`);
+      saveCheckpoint('articles', { articleIndex: ai + 1 });
     }
     if (!articles.length) warnings.push('Kategori sayfalarında içerik bağlantısı bulunamadı. Gerekirse CSS bağlantı seçicisini ayarlayın.');
-    return { pages: pageQueue, warnings, blocked, strictQueue: true, deep: true, categoryPages: categoryUrls.size, articles: articles.length };
+    const pageQueue = articles.flatMap(article => article.pages.map(page => ({ ...page, doc: docCache.get(page.url) || null })));
+    const stats = {
+      phase: 'done',
+      categoryPages: categoryPageCount,
+      candidates: linkStats.candidates,
+      acceptedLinks: linkStats.accepted,
+      selector: linkStats.selector,
+      rejected: { navigation: linkStats.navigation, indexLike: linkStats.indexLike, duplicate: linkStats.duplicate },
+      settings: { maxCategories: c.MAX_PAGES, maxArticles: c.MAX_ARTICLES, maxArticlePages: c.ARTICLE_MAX_PAGES },
+      articles: articles.map(article => ({
+        url: article.url,
+        topic: article.topic || article.label || fallbackTopic(article.url),
+        pages: article.pages.length,
+        firstPage: article.pages[0]?.url || article.url,
+        error: article.error || '',
+      })),
+    };
+    return { pages: pageQueue, warnings, blocked, strictQueue: true, deep: true, categoryPages: categoryPageCount, articles: articles.length, stats };
   }
   /**
    * Başlığı bulunamayan içeriğe adresten türetilmiş bir ad verir.
@@ -545,8 +682,15 @@
   }
   function previewPageQueue(plan, signal) {
     return new Promise(resolve => {
-      const d = dialog('Taranacak sayfalar', `${plan.pages.length} sayfa bulundu; görseller henüz indirilmedi.`);
+      const planStats = plan.stats || null;
+      const discoverySummary = planStats
+        ? `${plan.pages.length} sayfa (${planStats.categoryPages || 0} kategori sayfası · ${planStats.articles?.length || 0} içerik · ${planStats.candidates || 0} aday bağlantı)`
+        : `${plan.pages.length} sayfa`;
+      const d = dialog('Taranacak sayfalar', `${discoverySummary} bulundu; görseller henüz indirilmedi.`);
       const list = $el('div', { class: 'page-queue-list' });
+      const discoveryNote = planStats
+        ? $el('p', { class: 'muted' }, `Keşif yöntemi: ${planStats.selector || 'otomatik'} · ${planStats.acceptedLinks ?? planStats.articles?.length ?? 0} içerik bağlantısı kabul edildi, ${planStats.rejected?.indexLike || 0} arşiv bağlantısı elendi.`)
+        : null;
       const warningCount = (plan.warnings || []).length;
       const status = $el('p', { class: 'muted' }, `Sorgu parametrelerinin değerleri varsayılan olarak gizlenir; bazı URL’ler imzalı/özel bilgi içerebilir.${warningCount ? ` Keşif sırasında ${warningCount} uyarı oluştu; ayrıntı URL’leri gizlendi.` : ''}${(plan.blocked || []).length ? ` Engellenen sayfa: ${(plan.blocked || []).length}.` : ''}`);
       const revealQuery = $el('input', { type: 'checkbox', 'aria-label': 'Tam sorgu parametrelerini göster' });
@@ -586,6 +730,7 @@
       const cancel = $el('button', { type: 'button', class: 'secondary' }, 'İptal');
       const start = $el('button', { type: 'button', class: 'primary' }, 'Seçilenleri tara');
       actions.append(cancel, start);
+      if (discoveryNote) d.box.appendChild(discoveryNote);
       d.box.append(status, revealLabel, addRow, list, selectActions, actions);
       let settled = false;
       const finish = value => { if (settled) return; settled = true; signal.removeEventListener('abort', abort); d.closeDialog(); resolve(value); };
@@ -615,9 +760,12 @@
         original.topics = [...new Set([...(original.topics || []), original.topic, activeArticleMeta.topic].filter(Boolean))];
       }
       let record = duplicateRecords.get(url);
-      if (!record) { record = { url, count:0, firstPage:original?.page || page || '', pages:[] }; duplicateRecords.set(url, record); }
+      if (!record) { record = { url, count:0, firstPage:original?.page || page || '', pages:[], articleUrls:[] }; duplicateRecords.set(url, record); }
       record.count++;
       if (page && !record.pages.includes(page)) record.pages.push(page);
+      // Aynı görselin hangi içeriklerde tekrarlandığı, içerik bazlı özette
+      // "kaç tekrar atlandı" bilgisini üretmek için saklanır.
+      if (activeArticleMeta?.articleUrl && !record.articleUrls.includes(activeArticleMeta.articleUrl)) record.articleUrls.push(activeArticleMeta.articleUrl);
     };
     const warnings = [...(resumeState?.warnings || []), ...(pagePlan?.warnings || [])];
     const blocked = [...(resumeState?.blocked || []), ...(pagePlan?.blocked || [])];
@@ -628,10 +776,14 @@
     if (!queue && resumeState?.strictQueue) queue = (resumeState.queueRemaining || []).map(item => typeof item === 'string' ? ({ url:item, doc:null }) : ({ ...item, doc:null }));
     let currentUrl = resumeState?.nextUrl || queue?.[0]?.url || location.href.split('#')[0];
     let stoppedByDuplicate = false;
+    // Derin tarama özeti (kategori/içerik sayıları, keşif istatistikleri) hem
+    // planla gelir hem de yarıda kalan taramanın kaydında korunur.
+    const deepStats = pagePlan?.stats || resumeState?.deepStats || null;
     const saveProgress = nextUrl => {
       if (!c.SAVE_SCAN_PROGRESS) { deleteKey(SCAN_STATE_KEY); return; }
       if (!nextUrl) { deleteKey(SCAN_STATE_KEY); return; }
-      const state = { version: 1, origin: location.origin, savedAt: Date.now(), nextUrl, strictQueue, deep: !!pagePlan?.deep || !!resumeState?.deep,
+      const state = { version: 2, origin: location.origin, savedAt: Date.now(), nextUrl, phase: 'scan', strictQueue, deep: !!pagePlan?.deep || !!resumeState?.deep,
+        deepStats, deepState: null,
         queueRemaining: strictQueue && queue ? queue.slice(queueIndex).map(x => typeof x === 'string' ? x : ({ url:x.url, reason:x.reason, articleUrl:x.articleUrl, topic:x.topic, articlePage:x.articlePage })) : [],
         pages, images, duplicates:[...duplicateRecords.values()], warnings, blocked, fingerprints: [...fingerprints] };
       const serialized = JSON.stringify(state);
@@ -742,7 +894,7 @@
         }
       }, (done, total) => status(`📐 Boyutlar kontrol ediliyor: ${done}/${total}`), signal);
     }
-    return { images: images.filter(img => passesSize(img, c)), duplicates:[...duplicateRecords.values()], pages, warnings, blocked };
+    return { images: images.filter(img => passesSize(img, c)), duplicates:[...duplicateRecords.values()], pages, warnings, blocked, deep: !!deepStats, deepStats };
   }
   let scanController = null, forceResumeScan = false;
   scanButton.onclick = async () => {
@@ -760,11 +912,33 @@
       const forceResume = forceResumeScan; forceResumeScan = false;
       const savedScan = readJSON(SCAN_STATE_KEY, null);
       let resume = null;
+      // Keşif aşamasında yarıda kalan derin tarama: tamamlanan kategori ve
+      // içerikler kayıtta durur, devam ederken yeniden keşfedilmez.
+      const saveDiscoveryState = deepState => {
+        if (!c.SAVE_SCAN_PROGRESS) return;
+        const state = { version: 2, origin: location.origin, savedAt: Date.now(), nextUrl: location.href.split('#')[0], phase: 'discovery', strictQueue: true, deep: true,
+          deepState, deepStats: null, queueRemaining: [], pages: [], images: [], duplicates: [], warnings: [], blocked: [], fingerprints: [] };
+        const serialized = JSON.stringify(state);
+        if (serialized.length * 2 > 2 * 1024 * 1024) { deleteKey(SCAN_STATE_KEY); return; }
+        try { GM_setValue(SCAN_STATE_KEY, serialized); } catch (e) { deleteKey(SCAN_STATE_KEY); }
+      };
       if (savedScan?.nextUrl && savedScan.origin === location.origin && (c.SAVE_SCAN_PROGRESS || forceResume)) {
-        if (forceResume || confirm(`Yarım kalan tarama (${savedScan.pages?.length || 0} sayfa) kaldığı yerden sürdürülsün mü?`)) { resume = savedScan; c.SAVE_SCAN_PROGRESS = true; }
+        const savedArticles = Array.isArray(savedScan.deepState?.articles) ? savedScan.deepState.articles.length : 0;
+        const savedDetail = savedScan.phase === 'discovery'
+          ? `${savedArticles} içerik keşfedildi`
+          : `${savedScan.pages?.length || 0} sayfa · ${savedScan.images?.length || 0} görsel${savedScan.queueRemaining?.length ? ` · ${savedScan.queueRemaining.length} sayfa sırada` : ''}`;
+        if (forceResume || confirm(`Yarım kalan tarama bulundu (${savedDetail}). Kaldığı yerden sürdürülsün mü?`)) { resume = savedScan; c.SAVE_SCAN_PROGRESS = true; }
         else if (confirm('Yarım kalan tarama kaydı silinsin mi?')) deleteKey(SCAN_STATE_KEY);
       } else if (!c.SAVE_SCAN_PROGRESS) deleteKey(SCAN_STATE_KEY);
-      if (resume?.strictQueue) {
+      if (resume?.phase === 'discovery' && resume.deepState) {
+        let plan = await discoverDeepQueue(c, scanController.signal, status, { previous: resume.deepState, checkpoint: saveDiscoveryState });
+        if (c.PREVIEW_PAGE_QUEUE && plan.pages.length) {
+          const selectedPages = await previewPageQueue(plan, scanController.signal);
+          if (!selectedPages) return;
+          plan = { ...plan, pages: selectedPages, strictQueue: true };
+        }
+        result = await scan(c, scanController.signal, status, { ...plan });
+      } else if (resume?.strictQueue) {
         let plan = { pages: (resume.queueRemaining || []).map(item => typeof item === 'string' ? ({ url:item, doc:null, reason:'Kaldığı yerden devam' }) : ({ ...item, doc:null, reason:item.reason || 'Kaldığı yerden devam' })), warnings: [], blocked: [], strictQueue: true, deep: !!resume.deep };
         if (c.PREVIEW_PAGE_QUEUE && plan.pages.length) {
           const selectedPages = await previewPageQueue(plan, scanController.signal);
@@ -774,7 +948,7 @@
         result = await scan(c, scanController.signal, status, plan, resume);
       } else if (resume) result = await scan(c, scanController.signal, status, null, resume);
       else if (c.DEEP_CRAWL) {
-        let plan = await discoverDeepQueue(c, scanController.signal, status);
+        let plan = await discoverDeepQueue(c, scanController.signal, status, { checkpoint: saveDiscoveryState });
         if (c.PREVIEW_PAGE_QUEUE && plan.pages.length) {
           const selectedPages = await previewPageQueue(plan, scanController.signal);
           if (!selectedPages) return;

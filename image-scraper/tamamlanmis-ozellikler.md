@@ -8,6 +8,80 @@ eklenir. Amaç: hangi işin bittiğini tek bakışta görmek.
 
 ---
 
+## 2026-11-03 — Derin tarama görünürlüğü ve dayanıklılığı
+
+Derin tarama (kategori → içerik → alt sayfa) akışının sayaçları, sınır
+denetimleri ve kesinti sonrası devam davranışı tamamlandı.
+
+### Kategori/içerik sayaçları ve derin tarama raporu
+- **Yeni rapor bölümü "Derin tarama özeti"** (Bağlantılar sekmesi): kategori
+  sayfası, aday bağlantı, kabul edilen içerik bağlantısı, içerik, içerik
+  sayfası ve benzersiz görsel sayaçları tek şeritte gösterilir.
+- Keşif yöntemi (yapısal ipuçları / kullanıcı CSS seçicisi / tüm bağlantılar)
+  ve elenen bağlantı sayıları (gezinme-sayfalama, arşiv, tekrar) yazılır;
+  uygulanan sınırlar (kategori/içerik/içerik sayfası) listelenir.
+- **İçerik bazlı özet:** her içerik için başlık bağlantısı, taranan alt sayfa,
+  benzersiz görsel ve atlanan tekrar sayısı satır satır gösterilir; sayfa
+  alınamayan içerik `⚠` ile işaretlenir. `articleUrl`/`articleUrls` zaten
+  görsellerde taşındığı için ek ağ isteği yapılmaz.
+- Tekrar kayıtları artık `articleUrls` alanını da saklar; böylece "kaç tekrar
+  atlandı" bilgisi içerik bazında hesaplanır.
+- `discoverDeepQueue()` `stats` döndürür (kategori sayfası, aday/kabul/elenen
+  bağlantı, seçici, içerik listesi, sınırlar); özet yarıda kalan taramanın
+  kaydında (`deepStats`) korunur.
+
+### Derin tarama için güvenli devam kaydı
+- Keşif aşaması artık **her kategori sayfasından ve her içerikten sonra**
+  denetim noktası yazar: `isp_scan_state_v1` içinde `phase: 'discovery'`,
+  `deepState` (kategori URL'leri, sonraki kategori URL'si, kategori sayacı,
+  içerik listesi + tamamlanan içeriklerin alt sayfaları, `articleIndex`,
+  bağlantı istatistikleri).
+- Devam ederken tamamlanan içerikler yeniden açılmaz; yalnızca kalan içerik
+  keşfedilir ve kuyruk taranır. Tarama aşamasındaki kayıt (`phase: 'scan'`)
+  önceki davranışı korur: sayfa, görsel ve kalan kuyruk saklanır.
+- Devam istemi artık neyin kaydedildiğini söyler:
+  `Yarım kalan tarama bulundu (2 içerik keşfedildi)…` veya
+  `(3 sayfa · 5 görsel · 4 sayfa sırada)`.
+- Doğrulama (Chromium): yavaş yanıtlı fixture'da keşif yarıda iptal edildi →
+  kayıtta 2 içerik ve tamamlanan içeriğin 2 alt sayfası vardı; devam eden
+  tarama önce yalnızca kalan içeriği istedi (`/slow-article/slow-2`), sonra
+  dört sayfa/dört görsel topladı ve kaydı temizledi.
+
+### Otomatik içerik bağlantısı keşfinin iyileştirilmesi
+- `discoverArticleLinks()` artık adayları **puanlar**: içerik kartı/içerik
+  öğesi (+4), `main`/`#content` (+2), başlık içi (+2), uzun etiket (+1);
+  kısa etiket, arşiv/etiket/kategori yolu ve site kökü negatif puan alır ve
+  elenir. Eşit adreslerde en yüksek puanlı örnek tutulur, liste puana göre
+  sıralanır (böylece ilk içerikler en güçlü adaylardır).
+- Seçici bilgisi ve aday sayısı `stats` ile döner; sayfa kuyruğu
+  önizlemesinde başlık `3 sayfa (1 kategori sayfası · 2 içerik · 4 aday
+  bağlantı)` olur ve "Keşif yöntemi: … 2 içerik bağlantısı kabul edildi,
+  0 arşiv bağlantısı elendi." satırı eklenir.
+
+### İçerik sayfalamasında sınır denetimi
+- **Başlık denetimi:** içeriğin 2. ve sonraki sayfasının başlığı ilk sayfayla
+  uyuşmuyorsa (sayfa numarası/site eki temizlendikten sonra
+  karşılaştırılır) o sayfa içeriğe eklenmez:
+  `"…" içeriğinde sayfalama farklı bir içeriğe ("…") gidiyordu; içerik
+  sınırında duruldu.`
+- **Arşiv denetimi:** sıradaki sayfa kategori/etiket/arşiv/yazar yolu veya
+  `page=all` ise içerik bitirilir:
+  `"…" içeriğinin sayfalaması kategori/arşiv sayfasına gidiyordu; içerik
+  sınırında duruldu.`
+- Doğrulama (Chromium): `/drift/` fixture'ında farklı başlıklı devam sayfası
+  ve kategoriye dönen sayfalama içeriğe katılmadı; 2 içerik, 2 sayfa,
+  2 görsel kaldı.
+
+### Testler
+- Yeni tarayıcı grupları: **Derin tarama sınırları** (12 kontur),
+  **İçerik tekrarı** (4), **Keşif sayaçları** (4), **Derin tarama devam** (9).
+- Yeni fixture'lar: `/drift/`, `/drift/1`, `/drift/1/2`, `/navdrift/1`,
+  `/dupe-listing/`, `/dupe-article/1`, `/slow-listing/`,
+  `/slow-article/slow-1|slow-2` (yavaş yanıt: 350 ms).
+- Toplam: statik 48/48, loader 56/56, tarayıcı **258/258**, ESLint temiz.
+
+---
+
 ## 2026-11-03 — ZIP paketleme, iş akışı profilleri ve kaynak sınırı
 
 ### ZIP içi klasörleme
