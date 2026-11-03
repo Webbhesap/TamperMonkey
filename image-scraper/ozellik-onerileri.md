@@ -7,9 +7,9 @@ Kural: bir madde uygulandığında bu dosyadan **çıkarılır** ve
 `tamamlanmis-ozellikler.md` içine tarih + nasıl yapıldığı bilgisiyle eklenir.
 Böylece burada kalan her madde gerçekten "yapılacak iş" listesidir.
 
-> Son gözden geçirme: 2026-11-03. ZIP klasörleme, kaynak manifesti,
-> iş akışı profilleri, kaynak sınırı ve modül bağımlılık sözleşmeleri
-> uygulandı; maddeler bu dosyadan çıkarıldı.
+> Son gözden geçirme: 2026-11-03. Derin tarama sayaçları, güvenli devam
+> kaydı, içerik bağlantısı puanlaması, içerik sayfalama sınırı ve içerik bazlı
+> tarama özeti uygulandı; maddeler bu dosyadan çıkarıldı.
 
 ---
 
@@ -23,18 +23,6 @@ Böylece burada kalan her madde gerçekten "yapılacak iş" listesidir.
 
 ## Orta öncelik
 
-- **Kategori ve içerik sayfalarının sınırlarını görünür kıl:** Kategori sayfa
-  sayısını, bulunan farklı içerik bağlantılarını ve her içerikte gezilen alt
-  sayfaları ayrı sayaçlarla göster; `/page/2` gibi sayfaların yeni makale
-  sayılmadığını denetle.
-- **Derin tarama için güvenli devam kaydı:** Kategori keşfi, içerik kuyruğu ve
-  her makalenin alt sayfa konumunu ayrı kaydet; kesinti sonrası tamamlanan
-  içeriği yeniden taramadan sıradaki içerikten devam et.
-- **Otomatik içerik bağlantısı bulmayı iyileştir:** Bağlantıları içerik
-  kartları/başlıkları içinden önceliklendir, sayfalama ve navigasyonu dışla;
-  bulunan aday sayısını ve seçilen seçiciyi önizlemede göster.
-- **Makale sayfalandırmasında içerik sınırı:** Sonraki sayfanın aynı makaleye
-  ait olduğunu doğrula; kategori/etiket/"tüm sayfalar" sapmasını engelle.
 - **Arayüz erişilebilirlik kontrolü:** Odak halkası, ekran okuyucu metni,
   klavye dolaşımı ve yüksek karşıtlığı düzenli doğrula. *(Temel altyapı var:
   `role="dialog"`, `aria-modal`, odak tuzağı, ok tuşu gezinmesi, `aria-live`,
@@ -54,9 +42,10 @@ Böylece burada kalan her madde gerçekten "yapılacak iş" listesidir.
   başına görsel sayısını göster; seçilen konuları ayrı koleksiyon/ZIP yap.
 - **İçerik kartı seçici yardımcısı:** Sayfadaki olası makale kartlarını
   işaretle; kullanıcı bir örnek seçsin, betik CSS seçicisini üretsin.
-- **Makale tarama özeti:** İçerik başına URL, başlık, taranan alt sayfa,
-  benzersiz görsel ve atlanan tekrar sayılarını tek raporda sun; başarısız
-  makaleleri tek tek yeniden dene.
+- **İçerik bazlı yeniden deneme:** İçerik tarama özeti artık hazır (URL,
+  başlık, alt sayfa, benzersiz görsel, atlanan tekrar). Kalan iş: özet
+  satırından tek bir içeriği yeniden tarayıp sonuçları mevcut oturuma
+  birleştirme (başarısız içerikleri tek tek dene).
 - **Benzer görselleri ZIP öncesi gözden geçirme:** Algısal benzerlik
   gruplarını yan yana göster, kullanıcı tutulacakları seçsin. Otomatik silme
   varsayılan olmasın.

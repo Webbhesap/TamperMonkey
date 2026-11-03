@@ -1,6 +1,6 @@
 {
   "name": "image-scraper-userscript",
-  "version": "6.5.6",
+  "version": "6.5.7",
   "private": true,
   "description": "Image Scraper Alternative – Tampermonkey/Violentmonkey userscript for Chrome and Firefox",
   "type": "module",
