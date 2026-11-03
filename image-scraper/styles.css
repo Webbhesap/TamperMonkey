@@ -291,3 +291,27 @@ details{border:1px solid #384157;background:#1a2130;border-radius:10px;padding:1
   .result-tabs{padding:0 12px}
   .result-tabs button{padding:10px 10px;font-size:12px}
 }
+
+/* --- ZIP aşama göstergesi --------------------------------------------------
+   Kullanıcı "🗜️ ZIP 1/1 · 0% · 15.5 MB" görüp işlemin nerede takıldığını
+   anlayamıyordu. Aşamalar soldaki rozetlerde gösterilir: geçmiş aşama ✔,
+   etkin aşama vurgulu. */
+.zip-stages{display:flex;flex-wrap:wrap;gap:6px;margin-top:14px;padding:0;list-style:none}
+.zip-stage{display:inline-flex;align-items:center;gap:6px;padding:5px 11px;border-radius:99px;
+  border:1px solid var(--isp-line);background:var(--isp-surface-0);color:var(--isp-text-muted);
+  font-size:var(--isp-fs-small);font-weight:600;line-height:1.2;transition:all .18s ease}
+.zip-stage.is-active{border-color:var(--isp-accent);background:#342d5a;color:#f2efff;
+  box-shadow:0 0 0 3px #8b7dff1f}
+.zip-stage.is-done{border-color:#2f6b56;background:#173027;color:var(--isp-good)}
+.zip-stage.is-done::before{content:"✓ ";font-weight:800}
+.zip-stage.is-active::before{content:"● ";animation:isp-pulse 1.4s ease-in-out infinite}
+@keyframes isp-pulse{0%,100%{opacity:1}50%{opacity:.35}}
+/* Takılma uyarısı: uzun süre ilerleme gelmezse iptal/tekrar dene yolu. */
+.zip-stall{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-top:12px;padding:11px 13px;
+  border:1px solid #6b5432;border-radius:var(--isp-radius);background:#221d15;color:#ffd9a3;
+  font-size:var(--isp-fs-small);line-height:1.5}
+.zip-stall[hidden]{display:none}
+.zip-stall span{flex:1 1 260px;min-width:0}
+.zip-stall button{flex:0 0 auto;font-size:var(--isp-fs-small);padding:7px 11px;min-height:32px;
+  background:#2f3a4f;border-color:#47546e;color:#dfe6f4}
+@media (prefers-reduced-motion:reduce){.zip-stage.is-active::before{animation:none}}

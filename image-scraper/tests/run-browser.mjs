@@ -622,6 +622,106 @@ if (only('Ayar arama')) {
 }
 
 // ---------------------------------------------------------------------------
+// ZIP aşama göstergesi ve takılma tespiti. Kullanıcı "🗜️ ZIP 1/1 · 0%" görüp
+// işlemin nerede olduğunu anlayamıyordu. Aşamalar görünmeli, uzun süre
+// ilerleme gelmezse iptal/tekrar dene yolu sunulmalı.
+if (only('ZIP aşamaları')) {
+  t.test('ZIP aşamaları: rozetler ilerliyor, takılma tespit ediliyor');
+  // --- 1) Normal akış: tüm aşamalar tamamlanmalı, rozetler işaretlenmeli.
+  const page = await openApp('/basic/');
+  await setStorage(page, { isp_config: JSON.stringify({ MIN_WIDTH: 0, MIN_HEIGHT: 0, ZIP_FILENAME: 'stages.zip' }) });
+  await runScan(page);
+  await page.evaluate(() => {
+    const root = document.getElementById('__image_scraper_v4__').shadowRoot;
+    [...root.querySelectorAll('.result-tabs button')].find(b => b.textContent === 'ZIP ve indirme').click();
+  });
+  await new Promise(resolve => setTimeout(resolve, 250));
+  const stageLabels = await page.evaluate(() => {
+    const root = document.getElementById('__image_scraper_v4__').shadowRoot;
+    return [...root.querySelectorAll('.zip-stage')].map(n => n.dataset.stage);
+  });
+  t.equal(stageLabels.join(','), 'download,analysis,dedupe,archive,ready', 'ZIP aşama rozetleri eksik');
+  await page.evaluate(() => document.getElementById('__image_scraper_v4__').shadowRoot.querySelector('.result-pane [class="primary"]').click());
+  await page.waitForFunction(() => {
+    const root = document.getElementById('__image_scraper_v4__').shadowRoot;
+    return !!root.querySelector('a.download-link') || (root.querySelector('.result-pane .status')?.textContent || '').startsWith('❌');
+  }, { timeout: 90000, polling: 100 });
+  const done = await page.evaluate(() => {
+    const root = document.getElementById('__image_scraper_v4__').shadowRoot;
+    return {
+      ready: root.querySelector('.zip-stage[data-stage="ready"]')?.classList.contains('is-active') === true,
+      doneCount: root.querySelectorAll('.zip-stage.is-done').length,
+      stallHidden: root.querySelector('.zip-stall')?.hidden === true,
+      link: root.querySelector('a.download-link')?.download || '',
+    };
+  });
+  t.ok(done.ready, 'Bitişte "Hazır" aşaması etkin değil');
+  t.ok(done.doneCount >= 4, `Tamamlanan aşama sayısı az: ${done.doneCount}`);
+  t.ok(done.stallHidden, 'Başarılı işlemde takılma uyarısı görünür kaldı');
+  t.ok(done.link.length > 0, 'ZIP indirme bağlantısı oluşmadı');
+  t.equal(page.__pageErrors.length, 0, 'ZIP aşamalarında sayfa hatası: ' + page.__pageErrors[0]);
+  await page.close();
+
+  // --- 2) Takılma: görsel indirmeleri asla tamamlanmaz, uyarı çıkmalı.
+  // openApp() varsayılan olarak .launch bekler; start:false ile UI henüz yok.
+  // Bu yüzden harness.open doğrudan kullanılır, UI sonra elle kurulur.
+  const stallOpen = await harness.open(`${site.origin}/basic/`, { files, start: false });
+  const stallPage = stallOpen.page;
+  stallPage.__pageErrors = stallOpen.pageErrors;
+  await stallPage.evaluate(() => {
+    const isImage = url => /\.(png|jpe?g|gif|webp|svg)(\?|#|$)/i.test(String(url));
+    const realFetch = window.fetch, realGM = window.GM_xmlhttpRequest;
+    window.fetch = function (input, init) {
+      const url = typeof input === 'string' ? input : (input && input.url) || '';
+      if (isImage(url)) return new Promise(() => {});   // hiç çözülmez = takılma
+      return realFetch.call(this, input, init);
+    };
+    window.GM_xmlhttpRequest = function (options) {
+      if (isImage(options.url)) return { abort() {} };
+      return realGM.call(this, options);
+    };
+  });
+  for (const script of ['lib/alpine.min.js', 'lib/jszip.min.js', 'modules/zip.js', 'modules/settings-ui.js', 'modules/page-tools.js', 'modules/network.js', 'modules/image-analysis.js', 'modules/ui-results.js', 'app.js']) {
+    await stallPage.evaluate(files[script]);
+  }
+  await stallPage.evaluate(async (panelHtml, cssPath) => {
+    const response = await fetch(cssPath);
+    window.__gmCssUrl = URL.createObjectURL(await response.blob());
+    window.__gmResources = { appHtml: panelHtml };
+    globalThis.ImageScraperApp.start({ panelHtml, cssUrl: window.__gmCssUrl });
+  }, files['panel.html'], 'https://userscript.test/styles.css');
+  await stallPage.waitForFunction(() => document.getElementById('__image_scraper_v4__')?.shadowRoot?.querySelector('.launch'), { timeout: 20000 });
+  await setStorage(stallPage, { isp_config: JSON.stringify({ MIN_WIDTH: 0, MIN_HEIGHT: 0 }) });
+  await runScan(stallPage);
+  await stallPage.evaluate(() => {
+    const root = document.getElementById('__image_scraper_v4__').shadowRoot;
+    [...root.querySelectorAll('.result-tabs button')].find(b => b.textContent === 'ZIP ve indirme').click();
+  });
+  await new Promise(resolve => setTimeout(resolve, 250));
+  await stallPage.evaluate(() => document.getElementById('__image_scraper_v4__').shadowRoot.querySelector('.result-pane [class="primary"]').click());
+  // STALL_MS = 20 sn; uyarı 20–30 sn arasında çıkmalı.
+  await stallPage.waitForFunction(() => {
+    const box = document.getElementById('__image_scraper_v4__').shadowRoot.querySelector('.zip-stall');
+    return box && !box.hidden && (box.textContent || '').includes('ilerlemiyor');
+  }, { timeout: 45000, polling: 500 });
+  const stalled = await stallPage.evaluate(() => {
+    const root = document.getElementById('__image_scraper_v4__').shadowRoot;
+    const box = root.querySelector('.zip-stall');
+    return {
+      text: box.textContent,
+      active: root.querySelector('.zip-stage.is-active')?.dataset.stage,
+      retryVisible: [...box.querySelectorAll('button')].some(b => !b.hidden),
+      cancelVisible: !root.querySelector('.result-pane .cancel, .result-pane [data-role="cancel"]')?.hidden,
+    };
+  });
+  t.includes(stalled.text, 'ilerlemiyor', 'Takılma metni beklenen biçimde değil');
+  t.equal(stalled.active, 'download', `Takılma "İndirme" aşamasında beklenirdi, "${stalled.active}" bulundu`);
+  t.ok(stalled.retryVisible, 'Takılma anında "yeniden dene" düğmesi yok');
+  t.equal(stallPage.__pageErrors.length, 0, 'Takılma senaryosunda sayfa hatası: ' + stallPage.__pageErrors[0]);
+  await stallPage.close();
+}
+
+// ---------------------------------------------------------------------------
 if (only('Yedekleme')) {
   t.test('Ayar yedeği dışa/içe aktarma');
   const page = await openApp('/selector/');

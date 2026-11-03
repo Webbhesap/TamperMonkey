@@ -818,11 +818,82 @@
       };
       cancel.onclick = () => zipController?.abort();
       d.setOnClose(() => { galleryClosed = true; grid.removeEventListener('scroll', scheduleGalleryRender); window.removeEventListener('resize', scheduleGalleryRender); zipController?.abort(); clearTimeout(saveTimer); if (remember) persist(); objectUrls.forEach(URL.revokeObjectURL); });
+      // ---------------------------------------------------------------------
+      // ZIP aşamaları: kullanıcı "🗜️ ZIP 1/1 · 0%" gibi tek satırlık bir
+      // mesajla baş başa kalıyordu ve işlemin nerede olduğunu anlayamıyordu.
+      // Artık her aşama ayrı gösterilir; ayrıca uzun süre ilerleme gelmezse
+      // "takıldı" durumu ve iptal/tekrar dene yolu sunulur.
+      // ---------------------------------------------------------------------
+      const zipStages = [
+        ['download', '⬇️ İndirme'],
+        ['analysis', '🧩 Benzerlik analizi'],
+        ['dedupe', '🔍 Tekilleştirme'],
+        ['archive', '🗜️ Arşiv oluşturma'],
+        ['ready', '✅ Hazır'],
+      ];
+      const stageBar = $el('div', { class: 'zip-stages', role: 'group', 'aria-label': 'ZIP aşamaları' });
+      for (const [key, label] of zipStages) {
+        stageBar.appendChild($el('span', { class: 'zip-stage', 'data-stage': key }, label));
+      }
+      const stallBox = $el('div', { class: 'zip-stall', role: 'alert' });
+      const stallText = $el('span', {});
+      const retryFailedButton = $el('button', { type: 'button', class: 'secondary' }, '↻ Yalnızca başarısızları yeniden dene');
+      const retryZipButton = $el('button', { type: 'button', class: 'secondary' }, '↻ ZIP’i yeniden dene');
+      stallBox.append(stallText, retryFailedButton, retryZipButton);
+      progress.after(stallBox); progress.after(stageBar);
+
+      let activeStage = null, lastProgressAt = 0, stallTimer = null, failedItems = [];
+      const STALL_MS = 20000;
+      const setStage = key => {
+        activeStage = key;
+        lastProgressAt = Date.now();
+        for (const node of stageBar.querySelectorAll('.zip-stage')) {
+          const isDone = zipStages.findIndex(([k]) => k === key) > zipStages.findIndex(([k]) => k === node.dataset.stage);
+          node.classList.toggle('is-active', node.dataset.stage === key);
+          node.classList.toggle('is-done', isDone);
+        }
+        stageBar.hidden = !key;
+      };
+      const touchProgress = () => { lastProgressAt = Date.now(); stallBox.hidden = true; };
+      const stopStallWatch = () => { clearInterval(stallTimer); stallTimer = null; stallBox.hidden = true; };
+      const startStallWatch = () => {
+        lastProgressAt = Date.now();
+        clearInterval(stallTimer);
+        stallTimer = setInterval(() => {
+          if (!activeStage || activeStage === 'ready' || zipController === null) return;
+          const idle = Date.now() - lastProgressAt;
+          if (idle < STALL_MS) return;
+          const label = zipStages.find(([k]) => k === activeStage)?.[1] || activeStage;
+          stallText.textContent = `${label} adımı ${Math.round(idle / 1000)} sn’dir ilerlemiyor. ` +
+            'İptal edip tekrar deneyebilirsin; büyük arşivlerde tarayıcı belleği dolduğunda bu olabilir ' +
+            '(parça başına MB sınırını düşürmeyi dene).';
+          stallBox.hidden = false;
+          // İptal her zaman, yeniden deneme yalnızca işlem bittiğinde anlamlı.
+          retryZipButton.hidden = false;
+          retryFailedButton.hidden = failedItems.length === 0;
+        }, 1000);
+      };
+
+      // "Yalnızca başarısızları yeniden dene": başarılı görseller önbellekten
+      // (downloaded Map) kullanılır, yalnızca hatalılar yeniden indirilir.
+      // Tüm arşivi yeniden indirmek büyük oturumlarda dakikalar sürüyordu.
+      retryFailedButton.onclick = () => {
+        if (!failedItems.length || zipController) return;
+        for (const img of failedItems) img.selected = true;
+        for (const img of images) if (!failedItems.includes(img)) img.selected = false;
+        failedItems = [];
+        retryFailedButton.hidden = true;
+        zip.onclick();
+      };
+      retryZipButton.onclick = () => { if (!zipController) { retryZipButton.hidden = true; zip.onclick(); } };
+
       zip.onclick = async () => {
         if (zipController) return;
         const selected = selection(); if (!selected.length) return;
         zipController = new AbortController(); const signal = zipController.signal;
         zip.disabled = true; cancel.hidden = false; progress.hidden = false; progress.value = 0;
+        failedItems = []; retryFailedButton.hidden = true; retryZipButton.hidden = true;
+        setStage('download'); startStallWatch();
         let same = 0, gm = 0, cached = 0, failed = 0, bytesTotal = 0;
         const errors = [], verificationUrls = new Map();
         details.hidden = true; errorList.textContent = ''; verifyLinks.replaceChildren();
@@ -856,15 +927,15 @@
               results[i] = item; bytesTotal += item.data.byteLength;
             } catch (e) {
               if (isAbort(e)) throw e;
-              failed++; img.status = 'hata'; img.error = e.message; errors.push(`${img.url} — ${e.message}`);
+              failed++; img.status = 'hata'; img.error = e.message; errors.push(`${img.url} — ${e.message}`); failedItems.push(img);
               if (e.challenge) verificationUrls.set(new URL(img.url).origin, img.url);
               console.warn('[Image Scraper]', img.url, e);
             }
             scheduleSave();
-          }, (done, total, state) => { progress.value = Math.round(done / total * 75); const eta = etaLabel(done, total, downloadStartedAt); status.textContent = `⬇️ ${done}/${total} · yeni: ${same + gm} · önbellek: ${cached} · hata: ${failed}${eta ? ` · ${eta}` : ''}`; updateResourceStatus(state.active, state.limit, done, total, downloadStartedAt); }, signal, adaptiveConcurrency);
+          }, (done, total, state) => { touchProgress(); progress.value = Math.round(done / total * 75); const eta = etaLabel(done, total, downloadStartedAt); status.textContent = `⬇️ ${done}/${total} · yeni: ${same + gm} · önbellek: ${cached} · hata: ${failed}${eta ? ` · ${eta}` : ''}`; updateResourceStatus(state.active, state.limit, done, total, downloadStartedAt); }, signal, adaptiveConcurrency);
           checkAbort(signal); render();
           if (c.GROUP_VISUAL_SIMILARITY) {
-            status.textContent = '🧩 Benzer görseller karşılaştırılıyor…';
+            setStage('analysis'); touchProgress(); status.textContent = '🧩 Benzer görseller karşılaştırılıyor…';
             const indexedHashes = [];
             const analysisLimit = Math.min(results.length, 1000);
             for (let i = 0; i < analysisLimit; i++) {
@@ -928,11 +999,14 @@
             part.push(file); size += n;
           }
           if (part.length) parts.push(part);
+          setStage('dedupe'); touchProgress();
           const zipStartedAt = Date.now(), zipTotalBytes = files.reduce((sum, file) => sum + file.data.byteLength, 0);
+          setStage('archive'); touchProgress();
           let zipDoneBytes = 0;
           for (let p = 0; p < parts.length; p++) {
             const currentPartBytes = parts[p].reduce((sum, file) => sum + file.data.byteLength, 0);
             const reportZipProgress = pct => {
+              touchProgress();
               progress.value = 75 + Math.round((p + pct / 100) / parts.length * 25);
               const doneBytes = zipDoneBytes + currentPartBytes * pct / 100;
               const eta = etaLabel(doneBytes, zipTotalBytes, zipStartedAt);
@@ -956,10 +1030,13 @@
             zipDoneBytes += currentPartBytes;
           }
           progress.value = 100; render(); scheduleSave();
+          setStage('ready'); stopStallWatch(); retryZipButton.hidden = true; retryFailedButton.hidden = failedItems.length === 0;
           status.textContent = `✅ ${parts.length} ZIP ${streamingDirectory ? 'seçilen klasöre akışla yazıldı' : 'hazır'} · ${same + gm + cached} indirildi · ${failed} hata. ${streamingDirectory ? 'ZIP arşivinin ek kopyası bellekte oluşturulmadı; görsel verileri bellekte tutulur.' : parts.length > 1 ? 'Her parçayı aşağıdan ayrı indirin.' : 'İndirme başlamazsa bağlantıya tıklayın.'}`;
         } catch (e) {
+          stopStallWatch();
           status.textContent = isAbort(e) ? '⏹️ ZIP işlemi iptal edildi.' : '❌ ' + e.message;
-          if (!isAbort(e)) console.error('[Image Scraper]', e);
+          if (!isAbort(e)) { console.error('[Image Scraper]', e); retryZipButton.hidden = false; }
+          else retryZipButton.hidden = false;
         } finally { zipController = null; render(); cancel.hidden = true; }
       };
     }
