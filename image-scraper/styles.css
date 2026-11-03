@@ -64,14 +64,33 @@ details{border:1px solid #384157;background:#1a2130;border-radius:10px;padding:1
 @media(max-width:600px){:host{right:12px;bottom:12px}.launch{gap:6px}.launch button{height:42px;font-size:12px;padding:0 11px}.launch button:last-child{padding:0 13px}.overlay{padding:10px}.dialog{max-height:94vh;max-height:94dvh;padding:18px;border-radius:16px}.header h2{font-size:18px}.subtitle{font-size:11px}.section{padding:13px}.actions button{min-width:calc(50% - 8px)}.output{min-height:180px}.output-heading span{display:none}}
 @media(prefers-reduced-motion:reduce){button{transition:none}}
 
-/* Local preview shell (not part of the Shadow DOM UI). */
-body { margin: 0; padding: 40px; color: #e8ecfa; background: #0b1020; font: 16px/1.5 system-ui, sans-serif; }
-.demo-page { max-width: 1100px; margin: auto; }
-.demo-page h1 { margin: 0 0 8px; font-size: 28px; }
-.demo-page p { color: #aab7ce; }
-.demo-images { display: grid; grid-template-columns: repeat(auto-fit,minmax(220px,1fr)); gap: 16px; margin-top: 24px; }
-.demo-images img { width: 100%; aspect-ratio: 4/3; object-fit: cover; border-radius: 12px; border: 1px solid #303b50; }
-@media(max-width:600px) { body { padding: 20px; } }
 @media(max-width:600px){.filter-drawer-panel{width:100vw}.filter-drawer-body{padding:12px 14px 24px}.filter-drawer-body .toolbar{grid-template-columns:1fr}.result-summary{max-width:62vw;font-size:10px}.settings-dialog .section{padding:13px 14px}.help-tip::after{max-width:calc(100vw - 56px)}}
 .error-list{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px}
 .verification-link{display:block;color:#a6e3a1;margin:8px 0;overflow-wrap:anywhere}
+
+/* --- Sınıf sözleşmesi tamamlamaları -------------------------------------
+   panel.html ve modüller bu sınıfları kullanıyor; bazıları Alpine üzerinden
+   gizleme/gösterme davranışını devralıyordu ve stillenmemişti. Görünümü
+   değiştirmeden eksik kuralları burada tamamlıyoruz. */
+/* Ayarlar: sekmelerin üstünde gezinme çubuğu ve panel yığını. */
+.settings-navigation{display:flex;flex-direction:column;gap:14px;min-height:0}
+.settings-tabs{display:flex;flex-wrap:wrap;gap:6px;padding-bottom:2px}
+.settings-panels{display:block;min-height:0}
+.settings-panels>[role="tabpanel"]{display:block}
+.settings-panels>[role="tabpanel"][hidden]{display:none!important}
+/* Bağlantılar sekmesindeki alt paneller. */
+.link-subtabs{display:flex;gap:6px;flex-wrap:wrap;margin:10px 0 12px}
+.link-subpane{display:block;min-height:0;overflow:auto}
+.link-subpane[hidden]{display:none!important}
+/* Tarama notları: özet satırı tıklanabilir başlık. */
+.link-notice-summary{cursor:pointer;overflow-wrap:anywhere}
+/* Filtre çekmecesi içindeki ek filtre grupları. */
+.filter-drawer-filters{margin:0;padding:0}
+/* İndirme sekmesindeki bellek/paralellik durumu: uzun metin taşmasın. */
+.resource-status{white-space:pre-wrap;overflow-wrap:anywhere}
+/* Galeri kartındaki küçük resim alanı: klavye odağı görünür kalsın. */
+.slideshow-thumb-trigger{cursor:zoom-in}
+.slideshow-thumb-trigger:focus-visible{outline:2px solid #8ca8ff;outline-offset:2px}
+/* Diyalog başlık bloğu. */
+.dialog-titles{display:flex;flex-direction:column;gap:2px;min-width:0}
+.dialog-titles h2{margin:0;overflow-wrap:anywhere}

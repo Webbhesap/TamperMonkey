@@ -35,3 +35,30 @@
 - **Dosya adı şablonu önizlemesi:** Örnek URL/sayfa/ölçüyle şablonun üreteceği adı kaydetmeden önce göster; geçersiz karakterleri, tekrar eden adları ve olası çakışmaları belirt.
 - **İsteğe bağlı format dönüştürme:** Desteklenen tarayıcılarda seçilen görselleri ZIP’e eklemeden önce JPEG/PNG/WebP biçimine dönüştürme ve kalite ayarı sun. Orijinal dosyaları koruma seçeneği bulunsun; dönüşüm tarayıcıda yerel yapılsın.
 - **Toplu seçim kısayolları:** Aralık seçimi, yalnızca mevcut sayfa, alan adı veya dosya türüne göre tümünü seç/kaldır gibi işlemler ekle; işlem öncesi etkilenecek görsel sayısını bildir.
+
+---
+
+## 2026-11 bakım turunda tamamlananlar (öneri değil, kayıt)
+
+Aşağıdaki maddeler bu depoda yapılan hata düzeltme/iyileştirme turunda karşılandı;
+yukarıdaki listeden çıkarılabilir veya "tamamlandı" olarak işaretlenebilir:
+
+- **Tarayıcı ve Tampermonkey uyumluluk matrisi:** Loader `@connect` izni
+  `raw.githubusercontent.com` ile sınırlandı, `@resource` yedeği eklendi, geliştirme
+  loader'ı (önbelleksiz) eklendi. Chrome + Tampermonkey/Violentmonkey için gerçek
+  Chromium'da otomatik testler var. **Firefox tarafı bu ortamda çalıştırılamadı**;
+  kod yalnızca standart API'ler (`fetch`, `AbortController`, `Blob`, `CSS.supports`
+  gerektirmeyen özellikler) kullanır ve `createImageBitmap`/`showDirectoryPicker`
+  yokluğunda zarifçe geri düşer, ancak canlı Firefox doğrulaması yapılmadı.
+- **Arayüz erişilebilirlik kontrolü (kısmi):** Diyaloglarda `role="dialog"`,
+  `aria-modal`, odak tuzağı ve Escape ile kapatma; sekmelerde ok tuşu gezinmesi;
+  galeri kartlarında `aria-label`; ikon düğmelerde metin etiketi doğrulandı.
+  Otomatik erişilebilirlik ağacı/ekran okuyucu testi hâlâ yok.
+- **Büyük oturumlarda arayüz performans ölçümü (kısmi):** 5.200 görselli sayfa için
+  tarayıcı testi eklendi (tarama süresi ve galeri sanallaştırması regresyon olarak
+  izleniyor). Tekrar kaydı için O(n²) dizi araması ölçüldü ve **fark yaratmadığı**
+  için kod basit bırakıldı.
+- **Modül bağımlılık sözleşmeleri (kısmi):** Her modül fabrikası `app.js` içinde
+  `typeof ... !== 'function'` kontrolüyle doğrulanıyor ve anlaşılır hata veriyor.
+  Modül içindeki tek tek bağımlılıkların (örn. eksik `saveBlob`) önceden doğrulanması
+  hâlâ yapılmıyor.

@@ -1,0 +1,8 @@
+# Bağımlılıklar
+node_modules
+*/node_modules
+
+# Test/araç çıktıları
+coverage/
+*.log
+.DS_Store

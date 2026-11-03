@@ -3,8 +3,19 @@
   const modules = global.ImageScraperModules || (global.ImageScraperModules = Object.create(null));
   modules.createNetworkModule = function createNetworkModule(deps) {
     const { location, GM_xmlhttpRequest, checkAbort, abortError, isAbort, fetchImpl, DOMParserImpl } = deps;
+    // Cloudflare ara sayfasının başlığı tarayıcı diline göre değişir
+    // ("Just a moment...", "Bir dakika lütfen...", "Un momento..."). Tek bir
+    // İngilizce metne bakmak, yerelleştirilmiş sayfaları normal HTML sanıp
+    // boş sonuç üretilmesine yol açar. Bu yüzden yapısal işaretlere bakılır:
+    // challenge-platform betiği, cf_chl_* parametresi veya challenges.cloudflare.com.
+    const CHALLENGE_MARKER = /(?:\/cdn-cgi\/challenge-platform|cf_chl_|challenges\.cloudflare\.com)/i;
+    const CHALLENGE_TITLE = /<title>[^<]*(?:just a moment|bir dakika|un momento|einen moment|un instant|attendi|even geduld)[^<]*<\/title>/i;
     function isChallengeHTML(html) {
-      return /<title>\s*just a moment\s*\.\.\./i.test(html) && /(?:\/cdn-cgi\/challenge-platform|cf_chl_|challenges\.cloudflare\.com)/i.test(html);
+      if (!html) return false;
+      if (!CHALLENGE_MARKER.test(html)) return false;
+      // Yapısal işaret varsa ek doğrulama: challenge sayfaları neredeyse boş
+      // gövdelerle gelir ve "enable JavaScript" uyarısı taşır.
+      return CHALLENGE_TITLE.test(html) || /<body[^>]*>[\s\S]{0,4000}(?:enable javascript|javascript.*(?:gerekli|etkin)|checking your browser|tarayıcınız kontrol)/i.test(html);
     }
     function pageGM(url, config, signal) {
       return new Promise((resolve, reject) => {
@@ -100,9 +111,19 @@
               } else {
                 const challenge = /(?:^|\r?\n)cf-mitigated:\s*challenge/i.test(r.responseHeaders || '');
                 const message = challenge ? `HTTP ${r.status}: Cloudflare doğrulaması gerekiyor` : `GM HTTP ${r.status || '?'} veya boş yanıt`;
+                // Retry-After ya saniye ya da HTTP tarihi olur. Tarih ayrıştırılamazsa
+                // (bozuk başlık) Date.parse NaN döner; bu, NaN'lı bir gecikmeye ve
+                // dolayısıyla hemen sıfırlanan bekleme süresine yol açmamalı.
                 const retryMatch = /(?:^|\r?\n)retry-after:\s*([^\r\n]+)/i.exec(r.responseHeaders || '');
                 const rawRetry = retryMatch && retryMatch[1].trim();
-                const retryAfter = rawRetry ? (/^\d+$/.test(rawRetry) ? Number(rawRetry) * 1000 : Math.max(0, Date.parse(rawRetry) - Date.now())) : 0;
+                let retryAfter = 0;
+                if (rawRetry) {
+                  if (/^\d+$/.test(rawRetry)) retryAfter = Number(rawRetry) * 1000;
+                  else {
+                    const parsedDate = Date.parse(rawRetry);
+                    retryAfter = Number.isFinite(parsedDate) ? Math.max(0, parsedDate - Date.now()) : 0;
+                  }
+                }
                 finish(Object.assign(new Error(message), { status: r.status, challenge, retryAfter: Number.isFinite(retryAfter) ? retryAfter : 0 }));
               }
             },
@@ -115,7 +136,11 @@
       });
     }
     async function downloadImage(url, c, signal) {
-      const same = new URL(url).origin === location.origin;
+      // new URL() bozuk adreste TypeError fırlatır; bunu ZIP akışının ortasında
+      // ham bir hata olarak değil, anlaşılır bir indirme hatası olarak bildir.
+      let same = false;
+      try { same = new URL(url).origin === location.origin; }
+      catch { throw Object.assign(new Error('Geçersiz görsel adresi'), { status: 0 }); }
       if (same) {
         const controller = new AbortController(), cancel = () => controller.abort();
         signal.addEventListener('abort', cancel, { once: true });

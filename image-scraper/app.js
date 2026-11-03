@@ -4,6 +4,8 @@
     start(options) {
       'use strict';
       options = options || {};
+      // Loader @version değerini geçirir; tanılama raporunda sabit sürüm yazılmasın.
+      const APP_VERSION = String(options.version || '').trim() || 'bilinmiyor';
 
   // Dynamic denylist is checked before touching the page DOM. Matching entries
   // suppress the entire scraper UI and all scanning on that host and subdomains.
@@ -109,11 +111,11 @@
   const checkAbort = signal => { if (signal && signal.aborted) throw abortError(); };
   const createZipModule = global.ImageScraperModules?.createZipModule;
   if (typeof createZipModule !== 'function') throw new Error('ZIP modülü yüklenemedi. Loader @require sırasını kontrol et.');
-  const { safeBaseName, zipName, zipEntryName, createUniqueZipFile, saveBlob, buildZip, consumeZipStream, generateZipBlob, generateZipToWritable } =
+  const { safeBaseName, zipName, zipEntryName, createUniqueZipFile, saveBlob, generateZipBlob, generateZipToWritable } =
     createZipModule({ $el, document, URL, Blob, Uint8Array, checkAbort, abortError });
   const createNetworkModule = global.ImageScraperModules?.createNetworkModule;
   if (typeof createNetworkModule !== 'function') throw new Error('Ağ modülü yüklenemedi. Loader @require sırasını kontrol et.');
-  const { isChallengeHTML, pageGM, fetchPage, gmBlob, downloadImage, downloadImageRetry } =
+  const { fetchPage, downloadImageRetry } =
     createNetworkModule({ location, GM_xmlhttpRequest, checkAbort, abortError, isAbort, fetchImpl: fetch.bind(globalThis), DOMParserImpl: DOMParser });
   const clampInt = (v, min, max, fallback) => {
     const n = Number(v);
@@ -311,7 +313,7 @@
 
   const createPageTools = global.ImageScraperModules?.createPageTools;
   if (typeof createPageTools !== 'function') throw new Error('Sayfa analiz modülü yüklenemedi. Loader @require sırasını kontrol et.');
-  const { buildUrl, srcsetUrl, imageUrl, documentBase, passesImageSourceHost, smartFitMode, htmlDimension, collect, nextByTemplate, pageOrdinal, nextPage } =
+  const { documentBase, smartFitMode, collect, nextPage } =
     createPageTools({ document, location, normalizeExcludedSite, isExcludedHost, DEFAULTS });
   function measure(url, timeout, signal) {
     return new Promise((resolve, reject) => {
@@ -488,7 +490,7 @@
         catch (e) { if (isAbort(e)) throw e; warnings.push(`İçerik sayfası alınamadı: ${current} (${e.message})`); if (e.status === 403) blocked.push(current); break; }
         if (visited.has(actualUrl)) break;
         visited.add(current); visited.add(actualUrl);
-        if (!topic) topic = articleTopic(doc, c) || article.label || new URL(article.url).pathname.split('/').filter(Boolean).pop() || article.url;
+        if (!topic) topic = articleTopic(doc, c) || article.label || fallbackTopic(article.url);
         pageQueue.push({ url: actualUrl, doc, reason: count === 0 ? `İçerik: ${topic}` : `İçerik alt sayfası ${count + 1}: ${topic}`, articleUrl: article.url, topic, articlePage: count + 1 });
         count++;
         const next = nextPage(doc, actualUrl, visited, articleNextConfig, count);
@@ -499,6 +501,14 @@
     }
     if (!articles.length) warnings.push('Kategori sayfalarında içerik bağlantısı bulunamadı. Gerekirse CSS bağlantı seçicisini ayarlayın.');
     return { pages: pageQueue, warnings, blocked, strictQueue: true, deep: true, categoryPages: categoryUrls.size, articles: articles.length };
+  }
+  /**
+   * Başlığı bulunamayan içeriğe adresten türetilmiş bir ad verir.
+   * new URL() bozuk adreste hata fırlatır; bu, tüm derin taramayı düşürmemeli.
+   */
+  function fallbackTopic(url) {
+    try { return new URL(url).pathname.split('/').filter(Boolean).pop() || url; }
+    catch { return String(url || 'bilinmeyen içerik'); }
   }
   function redactQueueUrl(value, reveal = false) {
     try {
@@ -585,6 +595,8 @@
     const priorPages = Array.isArray(resumeState?.pages) ? resumeState.pages : [];
     const pages = [...priorPages], images = Array.isArray(resumeState?.images) ? [...resumeState.images] : [];
     const visited = new Set(pages), seen = new Set(images.map(x => x.url));
+    // Tekrar kaydı ilk görünen sayfayı bildirir; ölçümlerde bu arama (en kötü
+    // durumda O(n²)) kabul edilebilir kaldı, bu yüzden basit tutuluyor.
     const duplicateRecords = new Map((Array.isArray(resumeState?.duplicates) ? resumeState.duplicates : []).filter(x => x && typeof x.url === 'string').map(x => [x.url, { url:x.url, count:Number.isSafeInteger(x.count) && x.count > 0 ? x.count : 1, firstPage:typeof x.firstPage === 'string' ? x.firstPage : '', pages:Array.isArray(x.pages) ? [...x.pages] : [] }]));
     let activeArticleMeta = null;
     const addDuplicate = (url, page) => {
@@ -594,7 +606,7 @@
         original.topics = [...new Set([...(original.topics || []), original.topic, activeArticleMeta.topic].filter(Boolean))];
       }
       let record = duplicateRecords.get(url);
-      if (!record) { record = { url, count:0, firstPage:images.find(item => item.url === url)?.page || page || '', pages:[] }; duplicateRecords.set(url, record); }
+      if (!record) { record = { url, count:0, firstPage:original?.page || page || '', pages:[] }; duplicateRecords.set(url, record); }
       record.count++;
       if (page && !record.pages.includes(page)) record.pages.push(page);
     };
@@ -798,7 +810,7 @@
       if (image.error) { const kind = classifyError(image.error); imageErrorKinds[kind] = (imageErrorKinds[kind] || 0) + 1; }
     }
     return {
-      format: 'image-scraper-diagnostics', schemaVersion: 1, scriptVersion: '6.5.6', generatedAt: new Date().toISOString(),
+      format: 'image-scraper-diagnostics', schemaVersion: 1, scriptVersion: APP_VERSION, generatedAt: new Date().toISOString(),
       settings: { paginationMode: config.PAGINATION_MODE || 'auto', pageLimit: config.MAX_PAGES, duplicatePageProtection: !!config.STOP_DUPLICATE_PAGES, imageSourceMode: config.IMAGE_SOURCE_MODE || 'any', pageQueuePreview: !!config.PREVIEW_PAGE_QUEUE, scanProgressOptIn: !!config.SAVE_SCAN_PROGRESS, visualSimilarityGrouping: !!config.GROUP_VISUAL_SIMILARITY, streamZipToDiskOptIn: !!config.STREAM_ZIP_TO_DISK },
       counts: { scannedPages: (result.pages || []).length, discoveredImages: (images || []).length, blockedPages: (result.blocked || []).length, imageStatuses: statuses, warningKinds, imageErrorKinds },
       privacy: { rawUrlsIncluded: false, hostnamesIncluded: false, cookiesIncluded: false, imageDataIncluded: false },
@@ -810,7 +822,7 @@
     formatBytes, etaSeconds, formatEta, encodeData, decodeData, adaptivePool, copyText, displayUrl, buildDiagnosticSummary,
     safeBaseName, zipName, zipEntryName, createUniqueZipFile, saveBlob, generateZipToWritable, generateZipBlob,
     downloadImageRetry, imageFormat, perceptualHash, hashDistance, smartFitMode, checkAbort, isAbort, location, document, window,
-    navigator, URL, Blob, AbortController, TextEncoder, crypto: global.crypto });
+    URL, Blob, AbortController, TextEncoder, crypto: global.crypto });
 
     }
   };
