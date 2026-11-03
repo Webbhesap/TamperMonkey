@@ -45,9 +45,21 @@
       const sessionPane = $el('div', { class: 'result-pane', role: 'tabpanel', id: 'isp-pane-session', hidden: true });
       const tabDefs = [[galleryPane, 'Galeri'], [linksPane, 'Bağlantılar'], [downloadPane, 'ZIP ve indirme'], [sessionPane, 'Oturum']];
       const tabButtons = [];
+      // Kurulum tamamlanmadan activateTab çağrılırsa sekmeler hazır
+      // olmayabilir; bu bayrak yalnızca güvenli çağrı noktasına izin verir.
+      let tabsReady = false;
       const activateTab = index => {
+        if (!tabsReady) return;
         tabDefs.forEach(([pane], i) => { pane.hidden = i !== index; tabButtons[i].setAttribute('aria-selected', String(i === index)); tabButtons[i].tabIndex = i === index ? 0 : -1; });
+        // Filtre yalnızca galeri görünümünde anlamlı; diğer sekmelerde gizle.
+        openFilterDrawer.hidden = tabDefs[index]?.[0] !== galleryPane;
+        // Galeride kaydırma galerinin kendisinde; sekme çubuğu ve içerik
+        // geri kalan alanı paylaşır. Diğer sekmeler normal akışla kayar.
+        workspace.classList.toggle('is-gallery', tabDefs[index]?.[0] === galleryPane);
         workspace.scrollTop = 0;
+        // NOT: render() burada çağrılmaz. activateTab(0) kurulum sırasında,
+        // render'ın bağımlı olduğu denetimler (grid, query...) henüz
+        // tanımlanmadan çalışır; galeri zaten sonda bir kez render edilir.
       };
       tabDefs.forEach(([pane, name], index) => {
         const btn = $el('button', { type: 'button', role: 'tab', 'aria-controls': pane.id, 'aria-selected': String(index === 0) }, name);
@@ -138,9 +150,11 @@
         }
       };
       renderContentDuplicatePairs(); duplicateLinksPane.appendChild(contentDuplicateList);
-      const galleryToolsBar = $el('div', { class:'gallery-tools-bar' });
+      // Filtre düğmesi sekme çubuğunun sağ ucunda durur: galerinin üstünde ayrı
+      // bir araç çubuğu, görsellerin "arada sıkışmış" görünmesine ve boş alan
+      // bırakılmasına yol açıyordu.
       const openFilterDrawer = $el('button', { type:'button', class:'secondary filter-open-button', 'aria-haspopup':'dialog', 'aria-expanded':'false' }, '☷ Görselleri filtrele ve seç');
-      galleryToolsBar.appendChild(openFilterDrawer); galleryPane.appendChild(galleryToolsBar);
+      tabs.appendChild(openFilterDrawer);
       const filterDrawerBackdrop = $el('div', { class:'filter-drawer-backdrop', hidden:true });
       const filterDrawerPanel = $el('div', { class:'filter-drawer-panel', role:'dialog', 'aria-modal':'true', 'aria-label':'Görselleri filtrele ve seç' });
       const filterDrawerHeader = $el('div', { class:'filter-drawer-header' });
@@ -782,6 +796,10 @@
       previews.addEventListener('input', render);
       selectAll.onclick = () => { filtered().forEach(i => { i.selected = true; }); render(); scheduleSave(); };
       selectNone.onclick = () => { filtered().forEach(i => { i.selected = false; }); render(); scheduleSave(); };
+      // Galeri varsayılan sekme. Bu noktadan önce activateTab çağrılamaz:
+      // gövdesi openFilterDrawer/galleryPane gibi sonradan tanımlanan
+      // const'lara dokunur ve erken çağrı TDZ ReferenceError üretir.
+      tabsReady = true; activateTab(0);
       render();
       const reportCopy = async value => { try { await copyText(value); status.textContent = '✅ Kopyalandı.'; } catch (e) { status.textContent = '❌ ' + e.message; } };
       copy.onclick = () => reportCopy(text.value);

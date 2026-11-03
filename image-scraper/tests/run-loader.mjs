@@ -49,9 +49,14 @@ if (only('metadata')) {
       t.equal(requires.length, 0, `${label}: dev loader @require kullanmamalı`);
       t.ok((loader.map.get('updateURL') || [])[0]?.startsWith(REPO_RAW), `${label}: @updateURL yok`);
     }
-    const connect = (loader.map.get('connect') || []).join(' ');
+    const connects = loader.map.get('connect') || [];
+    const connect = connects.join(' ');
     t.ok(connect.includes('raw.githubusercontent.com'), `${label}: @connect eksik`);
-    t.ok(!connect.includes('*'), `${label}: @connect fazla geniş (*)`);
+    // `*` ZORUNLU: görseller herhangi bir alan adından indirilir ve
+    // GM_xmlhttpRequest bu listede olmayan host'ları reddeder. Bu tam olarak
+    // bir kez regresyon olarak yaşandı (ZIP adımında tüm görseller "GM ağ
+    // hatası" verdi), o yüzden burada açıkça korunuyor.
+    t.ok(connects.includes('*'), `${label}: @connect * yok — görsel indirme engellenir`);
     for (const grant of ['GM_getValue', 'GM_setValue', 'GM_xmlhttpRequest']) {
       t.ok((loader.map.get('grant') || []).includes(grant), `${label}: @grant ${grant} yok`);
     }

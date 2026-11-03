@@ -127,7 +127,20 @@
                 finish(Object.assign(new Error(message), { status: r.status, challenge, retryAfter: Number.isFinite(retryAfter) ? retryAfter : 0 }));
               }
             },
-            onerror: () => finish(Object.assign(new Error('GM ağ hatası'), { transient: true })),
+            // onerror tek bir "ağ hatası" demekle yetinirse kullanıcı bunun
+            // @connect engeli mi, CORS mu, DNS mi olduğunu anlayamaz. Host adı
+            // ve olası nedenler mesaja eklenir (URL'nin tamamı değil: imzalı
+            // sorgu parametreleri günlüğe düşmesin).
+            onerror: () => {
+              let host = '';
+              try { host = new URL(url).host; } catch { host = 'bilinmeyen adres'; }
+              finish(Object.assign(new Error(
+                `Ağ hatası: ${host} — sunucuya ulaşılamadı. ` +
+                'Eklentinin @connect izni bu alan adını kapsamıyor olabilir ' +
+                '(Tampermonkey → betik → Ayarlar → Kullanıcı eşleşmeleri/@connect); ' +
+                'site çevrimdışı veya istek engellenmiş de olabilir.'
+              ), { transient: true, host }));
+            },
             ontimeout: () => finish(Object.assign(new Error('GM zaman aşımı'), { transient: true })),
             onabort: () => finish(abortError()),
           });

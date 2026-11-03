@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Image Scraper — geliştirme (önbelleksiz)
 // @namespace    https://github.com/Webbhesap/TamperMonkey
-// @version      0.1.0
+// @version      0.1.1
 // @description  Geliştirme sürümü: tüm JS dosyalarını her açılışta GitHub'dan çeker, @require önbelleği kullanmaz.
 // @author       Webbhesap
 // @match        *://*/*
@@ -16,6 +16,7 @@
 // @grant        GM_getResourceText
 // @grant        GM_getResourceURL
 // @connect      raw.githubusercontent.com
+// @connect      *
 // ==/UserScript==
 
 /*
@@ -28,6 +29,12 @@
  *
  * Bedeli: her sayfa açılışında birkaç ek ağ isteği ve ~30 ms ek gecikme.
  * Günlük kullanım için kararlı loader'ı tercih et.
+ *
+ * @connect hakkında (kararlı loader ile aynı gerekçe)
+ * ------------------------------------------------
+ * Görseller herhangi bir alan adından gelebilir ve bunlar GM_xmlhttpRequest
+ * ile indirilir. @connect daraltılırsa o istekler "not a part of the
+ * @connect list" hatasıyla reddedilir.
  *
  * Sayfa CSP'si hakkında
  * ---------------------

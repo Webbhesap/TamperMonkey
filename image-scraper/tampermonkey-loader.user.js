@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Image Scraper — GitHub'dan yüklenen alternatif
 // @namespace    https://github.com/Webbhesap/TamperMonkey
-// @version      0.4.0
+// @version      0.4.1
 // @description  Görsel toplayıcı panelini GitHub'daki kaynak dosyalardan yükler. HTML/CSS her açılışta tazelenir.
 // @author       Webbhesap
 // @match        *://*/*
@@ -27,6 +27,7 @@
 // @grant        GM_getResourceText
 // @grant        GM_getResourceURL
 // @connect      raw.githubusercontent.com
+// @connect      *
 // ==/UserScript==
 
 /*
@@ -45,6 +46,17 @@
  * açılışında `?_=zaman` eklenerek GitHub'dan yeniden çekilir, böylece arayüz ve
  * stiller sürüm artırmadan güncellenir. Ağ erişimi başarısız olursa @resource
  * kopyaları (kurulum anındaki sürüm) devreye girer.
+ *
+ * @connect neden `*`?
+ * -------------------
+ * Bu betik yalnızca GitHub'dan kendi dosyalarını indirseydi @connect
+ * raw.githubusercontent.com yeterdi. Ama asıl işi, gezdiğin sayfadaki
+ * görselleri indirmek ve görsel ZIP'ine eklemek. Görseller herhangi bir
+ * alan adından gelebilir; @connect daraltılırsa GM_xmlhttpRequest
+ * "This domain is not a part of the @connect list" hatası verir ve ZIP
+ * adımındaki tüm görseller başarısız olur. Bu yüzden `*` gerekli.
+ * Betik yalnızca senin başlattığın taramalarda istek yapar; arka planda
+ * kendiliğinden dışarıya veri göndermez.
  *
  * @require sırası
  * ---------------
