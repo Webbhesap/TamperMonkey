@@ -1,6 +1,16 @@
 
 [x-cloak]{display:none!important}
-:host{all:initial;position:fixed;z-index:2147483647;right:24px;bottom:24px;font:14px/1.5 ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#e8ecfa;pointer-events:none}
+:host{all:initial;position:fixed;z-index:2147483647;right:24px;bottom:24px;font:14px/1.5 ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#e8ecfa;pointer-events:none;
+  /* Tasarım belirteçleri: tek yerden ölçek ve renk yönetimi. */
+  --isp-surface-0:#0b0f1a;--isp-surface-1:#111624;--isp-surface-2:#171e2d;--isp-surface-3:#1e2637;
+  --isp-line:#2c3448;--isp-line-strong:#3a4560;
+  --isp-text:#e8ecfa;--isp-text-dim:#a9b5cc;--isp-text-muted:#8593ad;
+  --isp-accent:#8b7dff;--isp-accent-soft:#a99fff;--isp-accent-bg:#342d5a;
+  --isp-good:#7ee0b4;--isp-warn:#ffcf8b;--isp-danger:#ffb3c3;
+  --isp-gap-1:4px;--isp-gap-2:8px;--isp-gap-3:12px;--isp-gap-4:16px;--isp-gap-5:24px;
+  --isp-radius-sm:8px;--isp-radius:11px;--isp-radius-lg:16px;
+  --isp-fs-micro:11px;--isp-fs-small:12px;--isp-fs-body:13px;--isp-fs-lead:14px;
+  --isp-tap:38px;--isp-tap-min:32px}
 *,*::before,*::after{box-sizing:border-box} button,input,textarea,select{font:inherit} [hidden]{display:none!important}
 button{appearance:none;cursor:pointer;border:1px solid transparent;border-radius:10px;padding:10px 15px;font-weight:650;line-height:1.25;transition:transform .16s,background .16s,border-color .16s,box-shadow .16s;background:#8275ff;color:#fff}
 button:hover:not(:disabled){transform:translateY(-1px);filter:brightness(1.08)}button:active:not(:disabled){transform:translateY(0)}button:disabled{opacity:.45;cursor:not-allowed}
@@ -108,3 +118,235 @@ details{border:1px solid #384157;background:#1a2130;border-radius:10px;padding:1
 .result-workspace.is-gallery .result-pane .gallery{flex:1 1 auto;min-height:0}
 /* Slayt gösterisi ve filtre çekmecesi galeri kartlarının üstünde kalmalı. */
 .result-tabs .filter-open-button[hidden]{display:none}
+
+/* ===========================================================================
+   TASARIM KATMANI — okunabilirlik, erişilebilir hedefler, dar ekran desteği
+   Tek kaynak: yukarıdaki --isp-* belirteçleri. Bu blok en sonda olduğu için
+   önceki kuralları bilinçli olarak geçersiz kılar.
+   =========================================================================== */
+
+/* --- Ayarlar sekmesi çubuğu -------------------------------------------------
+   Sorun: 7 sekme tek satırda 926px yer kaplıyordu ve 820px altında 2-3 satıra
+   kırılıyordu; dialog yüksekliği oynuyor, içerik aşağı itiliyordu.
+   Çözüm: sabit yükseklikte, yatay kaydırılabilir şerit. Satır sayısı hep 1. */
+.settings-tabs{display:flex;flex-wrap:nowrap;gap:var(--isp-gap-1);padding:5px;margin:0 0 var(--isp-gap-4);
+  border:1px solid var(--isp-line);border-radius:var(--isp-radius);background:var(--isp-surface-0);
+  overflow-x:auto;overflow-y:hidden;scrollbar-width:thin;scrollbar-color:#46526b transparent;
+  scroll-behavior:smooth;overscroll-behavior-x:contain;scroll-snap-type:x proximity}
+.settings-tabs::-webkit-scrollbar{height:6px}
+.settings-tabs::-webkit-scrollbar-thumb{background:#46526b;border-radius:99px}
+.settings-tabs button{flex:0 0 auto;scroll-snap-align:start;min-height:var(--isp-tap-min);
+  display:inline-flex;align-items:center;gap:6px;padding:7px 12px;font-size:var(--isp-fs-small);font-weight:650;
+  background:transparent;border:1px solid transparent;border-radius:var(--isp-radius-sm);
+  color:var(--isp-text-dim);white-space:nowrap;transition:background .15s,color .15s,border-color .15s}
+.settings-tabs button:hover:not(:disabled){background:var(--isp-surface-3);color:var(--isp-text);transform:none}
+.settings-tabs button[aria-selected=true]{background:var(--isp-accent-bg);border-color:var(--isp-accent);
+  color:#f4f1ff;box-shadow:0 1px 0 #ffffff14 inset}
+/* Klavye odağı şerit içinde kaybolmasın: seçili sekme görünür alana kaydırılır
+   (app.js focus() çağırıyor; scroll-margin bunu dialog kaydırmasına çevirir). */
+.settings-tabs button:focus-visible{scroll-margin-inline:12px}
+
+/* --- Form kontrolleri: tek tip yükseklik ve gerçek dokunma hedefi ---------- */
+.settings-dialog label{min-height:var(--isp-tap);padding:2px 0;margin:4px 0}
+.settings-dialog input:not([type=checkbox]):not([type=file]),
+.settings-dialog select,
+.settings-dialog textarea{min-height:var(--isp-tap);font-size:var(--isp-fs-body)}
+.settings-dialog input[type=number]{width:104px}
+.settings-dialog input[type=checkbox]{width:22px;height:22px;border-radius:7px}
+.settings-dialog input[type=checkbox]::before{width:10px;height:7px}
+/* Etiket + uzun yardım metni: dar ekranda onay kutusu etiketten kopmasın. */
+.settings-dialog label:not(.column){gap:var(--isp-gap-3)}
+.settings-dialog label>span:first-child{flex:1 1 auto;line-height:1.45}
+
+/* --- Bölüm başlıkları: daha okunur hiyerarşi ------------------------------- */
+.section{padding:var(--isp-gap-4) var(--isp-gap-4);margin:var(--isp-gap-3) 0;border-radius:var(--isp-radius)}
+.section h3{font-size:var(--isp-fs-small);letter-spacing:.08em;margin:0 0 var(--isp-gap-3);
+  display:flex;align-items:center;gap:7px;color:var(--isp-accent-soft)}
+.section h3 .help-tip{margin-left:2px}
+
+/* --- Yardım balonu: dokunmatikte de açılsın --------------------------------
+   Önceki sürüm yalnızca :hover/:focus-visible ile açılıyordu; dokunmatikte
+   ulaşılamıyordu. :active ve dokunma hedefi büyütmesi eklendi. */
+.help-tip{width:20px;height:20px;font-size:11px;cursor:pointer;touch-action:manipulation}
+.help-tip:hover::after,.help-tip:focus-visible::after,.help-tip:active::after{opacity:1;visibility:visible;transform:translateY(0)}
+/* Balon ekran kenarından taşmasın: sağa yaslı öğelerde sağa hizala. */
+.help-tip::after{left:auto;right:0;max-width:min(300px,calc(100vw - 40px))}
+
+/* --- Ayarlar altbilgisi ----------------------------------------------------
+   NOT: sabit (sticky) altbilgi denendi ve geri alındı: 480px'de ekranın
+   ~%22'sini kaplayıp alttaki ayarları örtüyordu. Normal akışta bırakıldı;
+   bunun yerine düğmeler dar ekranda tam genişlik ve rahat dokunulur. */
+.settings-footer{margin-top:var(--isp-gap-4);padding-top:var(--isp-gap-3);border-top:1px solid var(--isp-line)}
+.settings-footer .actions{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:var(--isp-gap-2);margin:0}
+.settings-footer .actions button{min-height:var(--isp-tap);font-size:var(--isp-fs-body);min-width:0}
+
+/* --- Sonuç ekranı: dar ekranda metrikler düzgün aksın ---------------------- */
+.result-header{flex-wrap:wrap;row-gap:var(--isp-gap-2)}
+.result-header .header-metrics{flex:1 1 320px}
+.result-tabs{gap:2px}
+.result-tabs button{min-height:44px;padding:11px 14px}
+/* Sekme çubuğundaki filtre düğmesi dar ekranda taşmasın, çubuğa sığsın. */
+.result-tabs .filter-open-button{flex:0 0 auto;margin-left:auto;margin-right:10px;align-self:center;
+  min-height:34px;padding:7px 12px;font-size:var(--isp-fs-small);white-space:nowrap}
+/* Filtre düğmesi metni çok dar ekranda kırpılsın (tam metin aria-label'da). */
+@media (max-width:720px){.result-tabs .filter-open-button{max-width:46vw;overflow:hidden;text-overflow:ellipsis}}
+
+/* --- Galeri kartları: imleç ve seçim durumu görünür olsun ------------------ */
+.result-pane .image-card{cursor:zoom-in}
+.result-pane .image-card:focus-within{border-color:var(--isp-accent);box-shadow:0 0 0 3px #8b7dff26}
+/* Seçili kart: onay kutusu işaretliyken kart çerçevesi vurgulanır. */
+.result-pane .image-card:has(input[type=checkbox]:checked){border-color:#5d6b8f;background:#1b2334}
+.result-pane .image-card input[type=checkbox]{width:22px;height:22px}
+
+/* --- Dialog: dar ekranda kenar boşluklarını daralt ------------------------- */
+@media (max-width:640px){
+  .overlay{padding:10px}
+  .dialog{padding:16px;border-radius:var(--isp-radius-lg);max-height:min(94dvh,900px)}
+  .header{padding-bottom:14px;margin-bottom:12px;gap:10px}
+  .header h2{font-size:18px}
+  .brandmark{width:36px;height:36px;border-radius:11px;font-size:20px}
+  .section{padding:12px}
+  .settings-footer .actions{grid-template-columns:1fr}
+}
+/* --- Çok dar ekran: etiket ve kontrol alt alta düzgün hizalansın ----------- */
+@media (max-width:520px){
+  .settings-dialog label:not(.column){flex-wrap:wrap;row-gap:6px}
+  .settings-dialog label:not(.column)>span:first-child{flex:1 1 100%}
+  .settings-dialog label:not(.column)>input,
+  .settings-dialog label:not(.column)>select{flex:0 0 auto}
+  .settings-dialog input[type=number]{width:100%;max-width:140px;margin-left:auto}
+}
+
+/* --- Hareket azaltma tercihi ---------------------------------------------- */
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{transition-duration:.01ms!important;animation-duration:.01ms!important;scroll-behavior:auto!important}
+}
+
+/* --- Yüksek karşıtlık tercihi --------------------------------------------- */
+@media (prefers-contrast:more){
+  :host{--isp-line:#5b6884;--isp-line-strong:#78849f;--isp-text-dim:#c9d3e6;--isp-text-muted:#b3bfd4}
+  .section{border-color:var(--isp-line-strong)}
+}
+
+/* --- Ayar arama -------------------------------------------------------------
+   30+ ayar 7 sekmede dağılmış durumda. Arama, sekme değiştirmeden ilgili
+   ayarı bulup o sekmeye atlar ve satırı vurgular. */
+.settings-search{display:flex;gap:var(--isp-gap-2);align-items:center;margin:0 0 var(--isp-gap-3)}
+.settings-search input[type=search]{flex:1 1 auto;min-width:0;min-height:var(--isp-tap);
+  background:var(--isp-surface-0);border:1px solid var(--isp-line);border-radius:var(--isp-radius-sm);
+  padding:8px 12px 8px 34px;font-size:var(--isp-fs-body);color:var(--isp-text);
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='15' height='15' viewBox='0 0 24 24' fill='none' stroke='%238593ad' stroke-width='2.2' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='m20 20-3.5-3.5'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:12px center}
+.settings-search input[type=search]::-webkit-search-cancel-button{-webkit-appearance:none;appearance:none}
+.settings-search input[type=search]:focus{border-color:var(--isp-accent);box-shadow:0 0 0 3px #8b7dff1c;outline:none}
+.settings-search button{flex:0 0 auto;width:var(--isp-tap);min-width:var(--isp-tap);height:var(--isp-tap);
+  padding:0;font-size:18px;line-height:1;display:grid;place-items:center}
+.settings-search-result{margin:0 0 var(--isp-gap-3);font-size:var(--isp-fs-small)}
+/* Eşleşen satır: arama sırasında dikkat çeksin. */
+.settings-dialog [data-isp-search-hit=true]{animation:isp-hit 1.6s ease-out 1;border-radius:var(--isp-radius-sm)}
+@keyframes isp-hit{0%,60%{background:#8b7dff2e;box-shadow:0 0 0 2px #8b7dff66}100%{background:transparent;box-shadow:none}}
+/* Arama sırasında eşleşmeyen satırlar soluklaşsın (gizlenmez: bağlam korunur). */
+.settings-dialog [data-isp-search-dim=true]{opacity:.35;transition:opacity .15s}
+@media (prefers-reduced-motion:reduce){.settings-dialog [data-isp-search-hit=true]{animation:none;box-shadow:0 0 0 2px #8b7dff66}}
+
+/* --- Ayarlar diyaloğu: sabit yükseklik ------------------------------------
+   Sorun: arama/sebeke geçişinde içerik uzayınca dialog flex kapsayıcı içinde
+   büyüyor, konumu kayıyor ve başlık ekrandan çıkıyordu (clientHeight
+   642 → 702). Ayarlar diyaloğu artık sabit yükseklikte durur; yalnızca
+   gövdesi kayar. Bu, "her şeyi rahat görelim" hedefinin temelidir. */
+.settings-dialog{height:min(88dvh,900px);max-height:min(88dvh,900px);display:flex;flex-direction:column;overflow:hidden}
+.settings-dialog .header{flex:none}
+.settings-dialog .settings-navigation{flex:1 1 auto;min-height:0;display:flex;flex-direction:column;overflow-y:auto;
+  overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:#46526b transparent;padding-right:2px}
+.settings-dialog .settings-tabs{flex:none}
+.settings-dialog .settings-search{flex:none}
+.settings-dialog .settings-panels{flex:0 0 auto}
+.settings-dialog .settings-footer{flex:none}
+/* Sekme çubuğu kayarken üstte kalsın: sekmeler arası geçiş her zaman erişilebilir. */
+.settings-dialog .settings-search{position:sticky;top:0;z-index:3;padding-top:2px;background:var(--isp-surface-1)}
+.settings-dialog .settings-tabs{position:sticky;top:0;z-index:2;background:var(--isp-surface-1)}
+
+/* --- Sonuç başlığı: dar ekranda üst üste binme ----------------------------
+   Sorun (800px ölçümü): başlık metni altı satıra sarıp metrik kartlarının
+   altına giriyordu ve "Seçili görsel" etiketi kesiliyordu. Başlık artık
+   kendi satırını alır, metrikler altında tam genişlikte akar. */
+@media (max-width:1000px){
+  .result-header{flex-direction:column;align-items:stretch;gap:var(--isp-gap-3)}
+  .result-header .identity{order:0;width:100%}
+  .result-header .close{order:0;position:absolute;top:16px;right:16px}
+  .result-header{position:relative;padding-right:52px}
+  .result-header .header-metrics{order:1;flex:1 1 auto;justify-content:flex-start;flex-wrap:wrap}
+  .result-header .header-metric{flex:1 1 110px;min-width:0}
+  .result-header .header-metric .metric-label{white-space:normal}
+}
+/* Metrik kutuları çok darsa etiket kırpılmasın: iki satıra izin ver. */
+.result-header .header-metric .metric-label{line-height:1.3}
+.result-pane{padding:16px 20px 40px}
+@media (max-width:640px){
+  .result-pane{padding:12px 12px 32px}
+  .result-pane .gallery{grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;grid-auto-rows:280px}
+  .result-pane .image-card{height:280px}
+  .result-pane .image-card .thumb-wrap{flex:0 0 150px;height:150px}
+  .result-pane .image-card .meta{padding:8px 10px 10px;font-size:11px}
+  .result-tabs{padding:0 12px}
+  .result-tabs button{padding:10px 10px;font-size:12px}
+}
+
+/* --- ZIP aşama göstergesi --------------------------------------------------
+   Kullanıcı "🗜️ ZIP 1/1 · 0% · 15.5 MB" görüp işlemin nerede takıldığını
+   anlayamıyordu. Aşamalar soldaki rozetlerde gösterilir: geçmiş aşama ✔,
+   etkin aşama vurgulu. */
+.zip-stages{display:flex;flex-wrap:wrap;gap:6px;margin-top:14px;padding:0;list-style:none}
+.zip-stage{display:inline-flex;align-items:center;gap:6px;padding:5px 11px;border-radius:99px;
+  border:1px solid var(--isp-line);background:var(--isp-surface-0);color:var(--isp-text-muted);
+  font-size:var(--isp-fs-small);font-weight:600;line-height:1.2;transition:all .18s ease}
+.zip-stage.is-active{border-color:var(--isp-accent);background:#342d5a;color:#f2efff;
+  box-shadow:0 0 0 3px #8b7dff1f}
+.zip-stage.is-done{border-color:#2f6b56;background:#173027;color:var(--isp-good)}
+.zip-stage.is-done::before{content:"✓ ";font-weight:800}
+.zip-stage.is-active::before{content:"● ";animation:isp-pulse 1.4s ease-in-out infinite}
+@keyframes isp-pulse{0%,100%{opacity:1}50%{opacity:.35}}
+/* Takılma uyarısı: uzun süre ilerleme gelmezse iptal/tekrar dene yolu. */
+.zip-stall{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-top:12px;padding:11px 13px;
+  border:1px solid #6b5432;border-radius:var(--isp-radius);background:#221d15;color:#ffd9a3;
+  font-size:var(--isp-fs-small);line-height:1.5}
+.zip-stall[hidden]{display:none}
+.zip-stall span{flex:1 1 260px;min-width:0}
+.zip-stall button{flex:0 0 auto;font-size:var(--isp-fs-small);padding:7px 11px;min-height:32px;
+  background:#2f3a4f;border-color:#47546e;color:#dfe6f4}
+@media (prefers-reduced-motion:reduce){.zip-stage.is-active::before{animation:none}}
+
+/* --- Dosya adı şablonu önizlemesi ------------------------------------------
+   Kullanıcı şablonun üreteceği adı kaydetmeden önce görür; geçersiz
+   karakterler ve ad çakışmaları burada uyarılır. */
+.template-preview{margin:2px 0 0;padding:9px 11px;border:1px solid var(--isp-line);
+  border-radius:var(--isp-radius-sm);background:var(--isp-surface-0);
+  font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:var(--isp-fs-small);
+  line-height:1.55;overflow-wrap:anywhere;white-space:pre-wrap}
+.template-preview[hidden]{display:none}
+.template-preview[data-state=warn]{border-color:#6b5432;background:#221d15;color:#ffd9a3}
+.template-preview[data-state=ok]{border-color:#2f6b56;background:#173027;color:var(--isp-good)}
+
+/* --- Toplu seçim kısayolları -----------------------------------------------
+   Filtre çekmecesinde sayfa / alan adı / formata göre toplu seçim.
+   "Tümünü seç" yerine hedefli seçim: etkilenecek sayı işlemden hemen
+   sonra bildirilir. */
+.bulk-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:var(--isp-gap-2)}
+.bulk-row select{min-width:0;width:100%;min-height:var(--isp-tap)}
+.bulk-row button{min-height:var(--isp-tap);min-width:0}
+.bulk-count{margin:6px 0 0;font-size:var(--isp-fs-small);color:var(--isp-text-dim)}
+.bulk-count:empty{display:none}
+
+/* --- Filtre çekmecesinde etiket + onay kutusu ------------------------------
+   Sorun (ekran görüntüsünde): "Önizlemeleri yükle" onay kutusu, eski
+   `.filter-drawer-body .toolbar input{width:100%}` kuralına takılıp mor bir
+   bar gibi tüm genişliği kaplıyordu. Onay kutuları ve etiketleri artık
+   içeriğe göre boyutlanır. */
+.filter-drawer-body .toolbar label.compact{display:inline-flex;align-items:center;gap:8px;
+  width:auto;min-width:0;margin:0;padding:0 4px;white-space:nowrap;cursor:pointer}
+.filter-drawer-body .toolbar input[type=checkbox]{width:22px;height:22px;min-width:22px;flex:0 0 auto}
+.filter-drawer-body .toolbar label.compact span{font-size:var(--isp-fs-small);color:var(--isp-text-dim)}
+.filter-drawer-body .toolbar > button{min-height:var(--isp-tap)}
+/* Toplu seçim satırı iki kolonlu ızgarada tek başına kalsın (taşmasın). */
+.filter-drawer-body .bulk-row{grid-template-columns:repeat(2,minmax(0,1fr))}
+.filter-drawer-body .bulk-row button{min-width:0}

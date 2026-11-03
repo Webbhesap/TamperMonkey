@@ -31,6 +31,82 @@
         d.box.scrollTop = 0;
       };
       for (const [key, tab] of tabButtons) tab.onclick = () => selectSettingsTab(key);
+
+      // ---------------------------------------------------------------------
+      // Ayar arama: 30+ ayar 7 sekmeye dağılmış durumda. Kullanıcı sekme
+      // sekme gezmek yerine yazarak arar; eşleşen ayarın sekmesine atlanır,
+      // satır vurgulanır, eşleşmeyenler soluklaştırılır (gizlenmez; böylece
+      // ayarın hangi bölümde olduğu bağlamı korunur).
+      // ---------------------------------------------------------------------
+      const searchInput = q('settingsSearch'), searchClear = action('settings-search-clear');
+      const searchResult = q('settingsSearchResult');
+      // Türkçe arama: kullanıcı "sablon" yazınca "şablon" da bulunmalı.
+      // Aksan/özel harf katlama (normalize NFKD + birleşik işaret temizliği)
+      // "ç/ğ/ı/ö/ş/ü" → "c/g/i/o/s/u" dönüşümünü sağlar.
+      const fold = value => String(value ?? '')
+        .replace(/[ıİ]/g, 'i').replace(/[şŞ]/g, 's').replace(/[ğĞ]/g, 'g')
+        .normalize('NFKD').replace(/[\u0300-\u036f]/g, '')
+        .toLocaleLowerCase('tr');
+      // Aranabilir etiket: satırın görünen metni + kontrolün name/placeholder
+      // değeri (ör. data-control="filename" aramada "filename" ile de bulunur).
+      const searchRows = [];
+      for (const [key, pane] of settingsPanes) {
+        if (!pane || key === 'records') continue;
+        const section = () => pane.querySelector('.section h3')?.textContent || '';
+        for (const node of pane.querySelectorAll('label, .actions, p.muted')) {
+          if (node.closest('.settings-footer')) continue;
+          const control = node.querySelector('input,select,textarea');
+          const keys = [
+            node.textContent || '',
+            control?.dataset?.control || '',
+            control?.placeholder || '',
+            control?.getAttribute('aria-label') || '',
+          ].join(' ');
+          searchRows.push({ node, pane: key, section: section(), keys: fold(keys) });
+        }
+      }
+      const clearSearch = () => {
+        for (const row of searchRows) { row.node.removeAttribute('data-isp-search-dim'); row.node.removeAttribute('data-isp-search-hit'); }
+        searchResult.hidden = true; searchResult.textContent = '';
+        searchClear.hidden = true;
+      };
+      const runSearch = () => {
+        const term = fold(searchInput.value.trim());
+        if (!term) { clearSearch(); return; }
+        searchClear.hidden = false;
+        const hits = searchRows.filter(row => row.keys.includes(term));
+        for (const row of searchRows) {
+          const hit = hits.includes(row);
+          row.node.toggleAttribute('data-isp-search-hit', hit);
+          row.node.setAttribute('data-isp-search-dim', String(!hit));
+        }
+        if (!hits.length) {
+          searchResult.hidden = false;
+          searchResult.textContent = `“${searchInput.value.trim()}” ile eşleşen ayar yok.`;
+          return;
+        }
+        // İlk eşleşmenin sekmesine geç ve satırı görünür alana getir.
+        selectSettingsTab(hits[0].pane);
+        // Paneller Alpine ile açıldığında ölçüm bir sonraki karede doğru olur.
+        (window.requestAnimationFrame || (callback => setTimeout(callback, 16)))(() => {
+          // NOT: scrollIntoView kullanılmaz — odak arama kutusundayken dialogun
+          // kendisini de kaydırıp başlığı ekrandan çıkarıyordu. Kaydırma
+          // yalnızca dialog gövdesi içinde yapılır (offset ile hesaplanır).
+          const dialogScroll = d.box;
+          const rowBox = hits[0].node.getBoundingClientRect();
+          const dialogBox = dialogScroll.getBoundingClientRect();
+          const delta = rowBox.top - dialogBox.top - dialogBox.height / 2 + rowBox.height / 2;
+          try { dialogScroll.scrollBy({ top: delta, behavior: 'smooth' }); } catch { dialogScroll.scrollTop += delta; }
+        });
+        searchResult.hidden = false;
+        searchResult.textContent = hits.length === 1
+          ? `1 ayar bulundu: ${hits[0].section}`
+          : `${hits.length} ayar bulundu. İlk eşleşme: ${hits[0].section}`;
+      };
+      searchInput.oninput = runSearch;
+      searchInput.onkeydown = event => { if (event.key === 'Escape') { searchInput.value = ''; clearSearch(); event.stopPropagation(); } };
+      searchClear.onclick = () => { searchInput.value = ''; clearSearch(); searchInput.focus(); };
+
       settingsTabs.onkeydown = e => {
         if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
         e.preventDefault();
@@ -47,7 +123,7 @@
         useSel: c.USE_SELECTOR, selector: c.SELECTOR, skip: c.SKIP_PATTERNS, decode: c.DECODE_URL, useRep: c.USE_REPLACE,
         replacements: JSON.stringify(c.REPLACEMENTS, null, 2), sourceMode: c.IMAGE_SOURCE_MODE, sourceHosts: c.IMAGE_SOURCE_HOSTS,
       retryReferer: c.RETRY_REFERER, filename: c.ZIP_FILENAME, concurrent: c.ZIP_CONCURRENT, maxFiles: c.PART_MAX_FILES, maxMB: c.PART_MAX_MB,
-      dedupe: c.DEDUPE_CONTENT, visualGroups: c.GROUP_VISUAL_SIMILARITY, streamZip: c.STREAM_ZIP_TO_DISK, template: c.NAME_TEMPLATE,
+      dedupe: c.DEDUPE_CONTENT, visualGroups: c.GROUP_VISUAL_SIMILARITY, streamZip: c.STREAM_ZIP_TO_DISK, verifyZip: c.VERIFY_ZIP, template: c.NAME_TEMPLATE,
       deepCrawl: c.DEEP_CRAWL, articleLinkSelector: c.ARTICLE_LINK_SELECTOR, articleTitleSelector: c.ARTICLE_TITLE_SELECTOR,
       articleNextSelector: c.ARTICLE_NEXT_SELECTOR, articleMaxPages: c.ARTICLE_MAX_PAGES, maxArticles: c.MAX_ARTICLES,
       };
@@ -62,7 +138,36 @@
       const steps = q('steps'), timeout = q('timeout'), useSel = q('useSel'), selector = q('selector'), skip = q('skip');
       const decode = q('decode'), useRep = q('useRep'), replacements = q('replacements'), sourceMode = q('sourceMode'), sourceHosts = q('sourceHosts');
       const retryReferer = q('retryReferer'), filename = q('filename'), concurrent = q('concurrent'), maxFiles = q('maxFiles'), maxMB = q('maxMB');
-      const dedupe = q('dedupe'), visualGroups = q('visualGroups'), streamZip = q('streamZip'), template = q('template');
+      const dedupe = q('dedupe'), visualGroups = q('visualGroups'), streamZip = q('streamZip'), verifyZip = q('verifyZip'), template = q('template');
+      // Dosya adı şablonu önizlemesi: kaydetmeden önce örnek çıktıyı göster,
+      // geçersiz karakterleri ve bilinmeyen değişkenleri uyar.
+      const templatePreview = q('templatePreview');
+      const renderTemplatePreview = () => {
+        const raw = template.value.trim() || DEFAULTS.NAME_TEMPLATE;
+        const allowed = new Set(['sira', 'sayfa', 'orijinal_ad', 'boyut']);
+        const unknown = [...raw.matchAll(/\{([^}]+)\}/g)].map(m => m[1]).filter(k => !allowed.has(k));
+        const sample = { sira: '001', sayfa: '1', orijinal_ad: 'ornek-gorsel', boyut: '1200x800' };
+        // Betikteki ad üretimiyle aynı kurallar (zip.js safeBaseName/zipEntryName).
+        const produced = raw.replace(/\{(sira|sayfa|orijinal_ad|boyut)\}/g, (_, k) => sample[k]);
+        const unsafe = /[\\/<>:"|?*\x00-\x1f\x7f]/.test(produced);
+        const cleaned = produced.replace(/[\\/<>:"|?*\x00-\x1f\x7f]/g, '_').replace(/^\.+|[. ]+$/g, '').slice(0, 150) || 'image';
+        const reserved = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i.test(cleaned);
+        const problems = [];
+        if (unknown.length) problems.push(`bilinmeyen değişken: ${[...new Set(unknown)].join(', ')} (yok sayılır)`);
+        if (unsafe) problems.push('ad içinde geçersiz karakter var, "_" ile değiştirilir');
+        if (reserved) problems.push('Windows ayrılmış adı, başına "_" eklenir');
+        if (!/\{orijinal_ad\}/.test(raw)) problems.push('{orijinal_ad} yok: farklı görseller aynı adı alabilir, çakışma "_2" ile çözülür');
+        if (!problems.length) {
+          templatePreview.dataset.state = 'ok';
+          templatePreview.textContent = `Örnek: ${cleaned}.png`;
+        } else {
+          templatePreview.dataset.state = 'warn';
+          templatePreview.textContent = `Örnek: ${cleaned}.png\n⚠ ${problems.join(' · ')}`;
+        }
+        templatePreview.hidden = false;
+      };
+      template.addEventListener('input', renderTemplatePreview);
+      renderTemplatePreview();
       const deepCrawl = q('deepCrawl'), articleLinkSelector = q('articleLinkSelector'), articleTitleSelector = q('articleTitleSelector');
       const articleNextSelector = q('articleNextSelector'), articleMaxPages = q('articleMaxPages'), maxArticles = q('maxArticles');
       const deepOnlyControls = [articleLinkSelector, articleTitleSelector, articleNextSelector, articleMaxPages, maxArticles];
@@ -186,7 +291,7 @@
             ZIP_CONCURRENT: num(concurrent, 'Paralel işlem', 1, 10), EXCLUDE_UNKNOWN: unknown.checked,
             DYNAMIC_SCROLL: dynamic.checked, DYNAMIC_STEPS: num(steps, 'Dinamik adım', 0, Number.MAX_SAFE_INTEGER),
             PART_MAX_FILES: num(maxFiles, 'Parça dosya sınırı', 1, 10000), PART_MAX_MB: num(maxMB, 'Parça MB sınırı', 1, 2000),
-            DEDUPE_CONTENT: dedupe.checked, GROUP_VISUAL_SIMILARITY: visualGroups.checked, STREAM_ZIP_TO_DISK: streamZip.checked, NAME_TEMPLATE: template.value.trim() || DEFAULTS.NAME_TEMPLATE,
+            DEDUPE_CONTENT: dedupe.checked, GROUP_VISUAL_SIMILARITY: visualGroups.checked, STREAM_ZIP_TO_DISK: streamZip.checked, VERIFY_ZIP: verifyZip.checked, NAME_TEMPLATE: template.value.trim() || DEFAULTS.NAME_TEMPLATE,
             DEEP_CRAWL: deepCrawl.checked, ARTICLE_LINK_SELECTOR: articleLinkSel, ARTICLE_TITLE_SELECTOR: articleTitleSel || DEFAULTS.ARTICLE_TITLE_SELECTOR,
             ARTICLE_NEXT_SELECTOR: articleNextSel, ARTICLE_MAX_PAGES: deepLimit(articleMaxPages, 'İçerik sayfa sınırı', 0, 10000, c.ARTICLE_MAX_PAGES), MAX_ARTICLES: deepLimit(maxArticles, 'İçerik bağlantısı sınırı', 0, 100000, c.MAX_ARTICLES),
           };

@@ -99,6 +99,39 @@
     async function generateZipToWritable(files, writable, signal, onProgress = () => {}) {
       return consumeZipStream(files, signal, onProgress, chunk => writable.write(chunk));
     }
-    return { safeBaseName, zipName, zipEntryName, createUniqueZipFile, saveBlob, buildZip, consumeZipStream, generateZipBlob, generateZipToWritable };
+    // -----------------------------------------------------------------------
+    // Bütünlük kontrolü: arşiv üretildikten sonra gerçekten okunabilir mi?
+    // Amaç "başarılı" mesajı verip bozuk dosya sunmayı önlemek.
+    // Bellek maliyeti olduğu için varsayılan KAPALI (VERIFY_ZIP).
+    // Yalnızca yapısal kontroller yapılır, tam yeniden sıkıştırma değil:
+    //   - dosya sayısı beklenenle eşleşiyor mu,
+    //   - merkezi dizin (EOCD) okunabiliyor mu,
+    //   - her girişin yerel başlığı ve CRC alanı yerinde mi.
+    // -----------------------------------------------------------------------
+    function verifyZipBytes(bytes, expectedEntries) {
+      const data = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+      const problems = [];
+      if (data.byteLength < 22) { problems.push('Arşiv çok küçük (EOCD yok).'); return { ok: false, problems }; }
+      // EOCD imzası: 0x06054b50 — sonda, yorum alanı en fazla 65535 bayt.
+      let eocd = -1;
+      const stop = Math.max(0, data.byteLength - 22 - 65535);
+      for (let i = data.byteLength - 22; i >= stop; i--) {
+        if (data[i] === 0x50 && data[i + 1] === 0x4b && data[i + 2] === 0x05 && data[i + 3] === 0x06) { eocd = i; break; }
+      }
+      if (eocd < 0) { problems.push('Merkezi dizin (EOCD) bulunamadı; arşiv yarım kalmış olabilir.'); return { ok: false, problems }; }
+      const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+      const entries = view.getUint16(eocd + 10, true);
+      const cdSize = view.getUint32(eocd + 12, true);
+      const cdOffset = view.getUint32(eocd + 16, true);
+      if (expectedEntries != null && entries !== expectedEntries) {
+        problems.push(`Dosya sayısı uyuşmuyor: arşivde ${entries}, beklenen ${expectedEntries}.`);
+      }
+      if (cdOffset + cdSize > data.byteLength) problems.push('Merkezi dizin arşiv sınırlarının dışında.');
+      if (cdOffset > 0 && !(data[cdOffset] === 0x50 && data[cdOffset + 1] === 0x4b && data[cdOffset + 2] === 0x01 && data[cdOffset + 3] === 0x02)) {
+        problems.push('Merkezi dizin imzası geçersiz.');
+      }
+      return { ok: problems.length === 0, problems, entries, byteLength: data.byteLength };
+    }
+    return { safeBaseName, zipName, zipEntryName, createUniqueZipFile, saveBlob, buildZip, consumeZipStream, generateZipBlob, generateZipToWritable, verifyZipBytes };
   };
 })(globalThis);

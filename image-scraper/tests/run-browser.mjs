@@ -61,6 +61,49 @@ async function runScan(page, { expectResults = true, timeout = 60000 } = {}) {
 }
 
 // ---------------------------------------------------------------------------
+// Dosya adı şablonu önizlemesi: kaydetmeden önce örnek çıktı, geçersiz
+// karakterler, bilinmeyen değişkenler ve çakışma riski gösterilmeli.
+if (only('Şablon önizleme')) {
+  t.test('Dosya adı şablonu önizlemesi: örnek, uyarı ve temizleme');
+  const page = await openApp('/basic/');
+  await page.evaluate(() => document.getElementById('__image_scraper_v4__').shadowRoot.querySelector('.launch [data-isp-action="settings"]').click());
+  await page.waitForFunction(() => [...document.getElementById('__image_scraper_v4__').shadowRoot.querySelectorAll('.overlay h2')].some(n => n.textContent === 'Ayarlar'));
+  await new Promise(resolve => setTimeout(resolve, 400));
+  await page.evaluate(() => document.getElementById('__image_scraper_v4__').shadowRoot.querySelector('[data-tab-key="zip"]').click());
+  await new Promise(resolve => setTimeout(resolve, 250));
+
+  const preview = tpl => page.evaluate(value => {
+    const root = document.getElementById('__image_scraper_v4__').shadowRoot;
+    const input = root.querySelector('[data-control="template"]');
+    input.value = value; input.dispatchEvent(new Event('input', { bubbles: true }));
+    const node = root.querySelector('[data-control="templatePreview"]');
+    return { state: node.dataset.state || '', text: node.textContent || '', hidden: node.hidden };
+  }, tpl);
+
+  const good = await preview('{sira}_{orijinal_ad}');
+  t.equal(good.state, 'ok', 'Geçerli şablon uyarı verdi: ' + good.text);
+  t.includes(good.text, '001_ornek-gorsel.png', 'Örnek çıktı beklenen biçimde değil');
+  t.ok(!good.hidden, 'Önizleme gizli');
+
+  const unknown = await preview('{bilinmeyen}_{sira}_{orijinal_ad}');
+  t.equal(unknown.state, 'warn', 'Bilinmeyen değişken uyarı vermedi');
+  t.includes(unknown.text, 'bilinmeyen değişken', 'Bilinmeyen değişken mesajı yok');
+
+  const unsafeName = await preview('a/b:c*{orijinal_ad}');
+  t.equal(unsafeName.state, 'warn', 'Geçersiz karakter uyarısı yok');
+  t.includes(unsafeName.text, 'a_b_c_ornek-gorsel.png', 'Geçersiz karakter temizlenmedi: ' + unsafeName.text);
+
+  const collision = await preview('{sayfa}-{boyut}');
+  t.equal(collision.state, 'warn', 'Çakışma riski uyarısı yok');
+
+  const reserved = await preview('CON');
+  t.includes(reserved.text, 'ayrılmış', 'Windows ayrılmış adı uyarısı yok');
+
+  t.equal(page.__pageErrors.length, 0, 'Şablon önizlemesinde sayfa hatası: ' + page.__pageErrors[0]);
+  await page.close();
+}
+
+// ---------------------------------------------------------------------------
 if (only('UI kurulumu')) {
   t.test('UI kurulumu: shadow root, başlat düğmeleri, CSS');
   const page = await openApp();
@@ -552,6 +595,313 @@ if (only('Galeri düzeni')) {
   t.ok(geo.button.right <= geo.tabs.right, `Filtre düğmesi sekme çubuğunu aşıyor: ${geo.button.right} > ${geo.tabs.right}`);
   t.ok(geo.tabs.right - geo.button.right < 80, `Filtre düğmesi sağa yaslı değil: fark ${geo.tabs.right - geo.button.right} px`);
   t.equal(page.__pageErrors.length, 0, 'Galeri düzeninde sayfa hatası: ' + page.__pageErrors[0]);
+  await page.close();
+}
+
+// ---------------------------------------------------------------------------
+// Ayar arama: 30+ ayar 7 sekmeye dağılmış. Arama, sekme değiştirmeden ilgili
+// ayarı bulmalı, o sekmeye atlamalı ve Türkçe karakterleri katlamalı
+// ("sablon" → "şablon").
+if (only('Ayar arama')) {
+  t.test('Ayar arama: sekme atlama, Türkçe katlama, temizleme');
+  const page = await openApp('/basic/');
+  await page.setViewport({ width: 1280, height: 800 });
+  await page.evaluate(() => document.getElementById('__image_scraper_v4__').shadowRoot.querySelector('.launch [data-isp-action="settings"]').click());
+  await page.waitForFunction(() => [...document.getElementById('__image_scraper_v4__').shadowRoot.querySelectorAll('.overlay h2')].some(n => n.textContent === 'Ayarlar'));
+  await new Promise(resolve => setTimeout(resolve, 400));
+
+  const search = term => page.evaluate(value => {
+    const root = document.getElementById('__image_scraper_v4__').shadowRoot;
+    const input = root.querySelector('[data-control="settingsSearch"]');
+    input.value = value; input.dispatchEvent(new Event('input', { bubbles: true }));
+  }, term);
+  const state = () => page.evaluate(() => {
+    const root = document.getElementById('__image_scraper_v4__').shadowRoot;
+    const dialog = root.querySelector('.settings-dialog');
+    const activeTab = [...root.querySelectorAll('.settings-tabs button')].find(b => b.getAttribute('aria-selected') === 'true');
+    return {
+      tab: activeTab?.textContent.trim() || '',
+      hits: root.querySelectorAll('[data-isp-search-hit]').length,
+      dimmed: root.querySelectorAll('[data-isp-search-dim]').length,
+      message: root.querySelector('[data-control="settingsSearchResult"]')?.textContent || '',
+      clearHidden: root.querySelector('[data-action="settings-search-clear"]')?.hidden !== false,
+      dialogHeight: Math.round(dialog.getBoundingClientRect().height),
+      dialogClient: dialog.clientHeight, dialogScroll: dialog.scrollHeight,
+    };
+  });
+
+  // 1) "zip" → ZIP sekmesine atlamalı.
+  await search('zip'); await new Promise(resolve => setTimeout(resolve, 250));
+  const zipState = await state();
+  t.includes(zipState.tab, 'ZIP', `"zip" araması ZIP sekmesine atlamadı: ${zipState.tab}`);
+  t.ok(zipState.hits >= 1, '"zip" araması eşleşme bulamadı');
+  t.ok(!zipState.clearHidden, 'Arama sırasında temizle düğmesi görünmüyor');
+  t.ok(zipState.dimmed > 0, 'Arama sırasında eşleşmeyen satırlar soluklaşmadı');
+
+  // 2) Türkçe katlama: "sablon" → "şablon" bulunmalı.
+  await search('sablon'); await new Promise(resolve => setTimeout(resolve, 250));
+  const folded = await state();
+  t.ok(folded.hits >= 1, '"sablon" araması "şablon" ile eşleşmedi (Türkçe katlama eksik)');
+
+  // 3) Olmayan terim: 0 eşleşme, kullanıcıya açık mesaj.
+  await search('zzzz-yok-boyle-ayar'); await new Promise(resolve => setTimeout(resolve, 250));
+  const none = await state();
+  t.equal(none.hits, 0, 'Olmayan terim için eşleşme bulundu');
+  t.includes(none.message, 'eşleşen ayar yok', 'Eşleşmeyen arama mesajı yok');
+
+  // 4) Diyalog yüksekliği arama boyunca sabit kalmalı (başlık ekrandan çıkmasın).
+  t.equal(zipState.dialogHeight, none.dialogHeight, `Arama diyalog yüksekliğini değiştirdi: ${zipState.dialogHeight} → ${none.dialogHeight}`);
+  t.ok(folded.dialogScroll >= folded.dialogClient, 'Diyalog kaydırma hesabı tutarsız');
+
+  // 5) Temizleme: vurgular kalkmalı.
+  await page.evaluate(() => document.getElementById('__image_scraper_v4__').shadowRoot.querySelector('[data-action="settings-search-clear"]').click());
+  await new Promise(resolve => setTimeout(resolve, 250));
+  const cleared = await state();
+  t.equal(cleared.hits, 0, 'Temizlemeden sonra vurgu kaldı');
+  t.equal(cleared.dimmed, 0, 'Temizlemeden sonra soluklaştırma kaldı');
+  t.ok(cleared.clearHidden, 'Temizlemeden sonra temizle düğmesi gizlenmedi');
+  t.equal(page.__pageErrors.length, 0, 'Ayar aramasında sayfa hatası: ' + page.__pageErrors[0]);
+  await page.close();
+}
+
+// ---------------------------------------------------------------------------
+// ZIP aşama göstergesi ve takılma tespiti. Kullanıcı "🗜️ ZIP 1/1 · 0%" görüp
+// işlemin nerede olduğunu anlayamıyordu. Aşamalar görünmeli, uzun süre
+// ilerleme gelmezse iptal/tekrar dene yolu sunulmalı.
+if (only('ZIP aşamaları')) {
+  t.test('ZIP aşamaları: rozetler ilerliyor, takılma tespit ediliyor');
+  // --- 1) Normal akış: tüm aşamalar tamamlanmalı, rozetler işaretlenmeli.
+  const page = await openApp('/basic/');
+  await setStorage(page, { isp_config: JSON.stringify({ MIN_WIDTH: 0, MIN_HEIGHT: 0, ZIP_FILENAME: 'stages.zip' }) });
+  await runScan(page);
+  await page.evaluate(() => {
+    const root = document.getElementById('__image_scraper_v4__').shadowRoot;
+    [...root.querySelectorAll('.result-tabs button')].find(b => b.textContent === 'ZIP ve indirme').click();
+  });
+  await new Promise(resolve => setTimeout(resolve, 250));
+  const stageLabels = await page.evaluate(() => {
+    const root = document.getElementById('__image_scraper_v4__').shadowRoot;
+    return [...root.querySelectorAll('.zip-stage')].map(n => n.dataset.stage);
+  });
+  t.equal(stageLabels.join(','), 'download,analysis,dedupe,archive,verify,ready', 'ZIP aşama rozetleri eksik');
+  await page.evaluate(() => document.getElementById('__image_scraper_v4__').shadowRoot.querySelector('.result-pane [class="primary"]').click());
+  await page.waitForFunction(() => {
+    const root = document.getElementById('__image_scraper_v4__').shadowRoot;
+    return !!root.querySelector('a.download-link') || (root.querySelector('.result-pane .status')?.textContent || '').startsWith('❌');
+  }, { timeout: 90000, polling: 100 });
+  const done = await page.evaluate(() => {
+    const root = document.getElementById('__image_scraper_v4__').shadowRoot;
+    return {
+      ready: root.querySelector('.zip-stage[data-stage="ready"]')?.classList.contains('is-active') === true,
+      doneCount: root.querySelectorAll('.zip-stage.is-done').length,
+      stallHidden: root.querySelector('.zip-stall')?.hidden === true,
+      link: root.querySelector('a.download-link')?.download || '',
+    };
+  });
+  t.ok(done.ready, 'Bitişte "Hazır" aşaması etkin değil');
+  t.ok(done.doneCount >= 4, `Tamamlanan aşama sayısı az: ${done.doneCount}`);
+  t.ok(done.stallHidden, 'Başarılı işlemde takılma uyarısı görünür kaldı');
+  t.ok(done.link.length > 0, 'ZIP indirme bağlantısı oluşmadı');
+  t.equal(page.__pageErrors.length, 0, 'ZIP aşamalarında sayfa hatası: ' + page.__pageErrors[0]);
+  await page.close();
+
+  // --- 2) Takılma: görsel indirmeleri asla tamamlanmaz, uyarı çıkmalı.
+  // openApp() varsayılan olarak .launch bekler; start:false ile UI henüz yok.
+  // Bu yüzden harness.open doğrudan kullanılır, UI sonra elle kurulur.
+  const stallOpen = await harness.open(`${site.origin}/basic/`, { files, start: false });
+  const stallPage = stallOpen.page;
+  stallPage.__pageErrors = stallOpen.pageErrors;
+  await stallPage.evaluate(() => {
+    const isImage = url => /\.(png|jpe?g|gif|webp|svg)(\?|#|$)/i.test(String(url));
+    const realFetch = window.fetch, realGM = window.GM_xmlhttpRequest;
+    window.fetch = function (input, init) {
+      const url = typeof input === 'string' ? input : (input && input.url) || '';
+      if (isImage(url)) return new Promise(() => {});   // hiç çözülmez = takılma
+      return realFetch.call(this, input, init);
+    };
+    window.GM_xmlhttpRequest = function (options) {
+      if (isImage(options.url)) return { abort() {} };
+      return realGM.call(this, options);
+    };
+  });
+  for (const script of ['lib/alpine.min.js', 'lib/jszip.min.js', 'modules/zip.js', 'modules/settings-ui.js', 'modules/page-tools.js', 'modules/network.js', 'modules/image-analysis.js', 'modules/ui-results.js', 'app.js']) {
+    await stallPage.evaluate(files[script]);
+  }
+  await stallPage.evaluate(async (panelHtml, cssPath) => {
+    const response = await fetch(cssPath);
+    window.__gmCssUrl = URL.createObjectURL(await response.blob());
+    window.__gmResources = { appHtml: panelHtml };
+    globalThis.ImageScraperApp.start({ panelHtml, cssUrl: window.__gmCssUrl });
+  }, files['panel.html'], 'https://userscript.test/styles.css');
+  await stallPage.waitForFunction(() => document.getElementById('__image_scraper_v4__')?.shadowRoot?.querySelector('.launch'), { timeout: 20000 });
+  await setStorage(stallPage, { isp_config: JSON.stringify({ MIN_WIDTH: 0, MIN_HEIGHT: 0 }) });
+  await runScan(stallPage);
+  await stallPage.evaluate(() => {
+    const root = document.getElementById('__image_scraper_v4__').shadowRoot;
+    [...root.querySelectorAll('.result-tabs button')].find(b => b.textContent === 'ZIP ve indirme').click();
+  });
+  await new Promise(resolve => setTimeout(resolve, 250));
+  await stallPage.evaluate(() => document.getElementById('__image_scraper_v4__').shadowRoot.querySelector('.result-pane [class="primary"]').click());
+  // STALL_MS = 20 sn; uyarı 20–30 sn arasında çıkmalı.
+  await stallPage.waitForFunction(() => {
+    const box = document.getElementById('__image_scraper_v4__').shadowRoot.querySelector('.zip-stall');
+    return box && !box.hidden && (box.textContent || '').includes('ilerlemiyor');
+  }, { timeout: 45000, polling: 500 });
+  const stalled = await stallPage.evaluate(() => {
+    const root = document.getElementById('__image_scraper_v4__').shadowRoot;
+    const box = root.querySelector('.zip-stall');
+    return {
+      text: box.textContent,
+      active: root.querySelector('.zip-stage.is-active')?.dataset.stage,
+      retryVisible: [...box.querySelectorAll('button')].some(b => !b.hidden),
+      cancelVisible: !root.querySelector('.result-pane .cancel, .result-pane [data-role="cancel"]')?.hidden,
+    };
+  });
+  t.includes(stalled.text, 'ilerlemiyor', 'Takılma metni beklenen biçimde değil');
+  t.equal(stalled.active, 'download', `Takılma "İndirme" aşamasında beklenirdi, "${stalled.active}" bulundu`);
+  t.ok(stalled.retryVisible, 'Takılma anında "yeniden dene" düğmesi yok');
+  t.equal(stallPage.__pageErrors.length, 0, 'Takılma senaryosunda sayfa hatası: ' + stallPage.__pageErrors[0]);
+  await stallPage.close();
+}
+
+// ---------------------------------------------------------------------------
+// ZIP bütünlük kontrolü: "başarılı" mesajı verip bozuk dosya sunmayı önler.
+// Doğrulayıcı, gerçek/kesik/çöp arşivleri ayırt etmeli.
+if (only('ZIP bütünlük')) {
+  t.test('ZIP bütünlük kontrolü: geçerli/kesik/çöp arşiv ayrımı');
+  const page = await openApp('/basic/');
+  const verdicts = await page.evaluate(async () => {
+    const mod = globalThis.ImageScraperModules.createZipModule({
+      $el: () => ({}), document: window.document, URL: window.URL, Blob: window.Blob,
+      Uint8Array: window.Uint8Array, checkAbort: () => {}, abortError: () => new Error('abort'),
+    });
+    const payload = [{ name: 'a.png', data: new Uint8Array([1, 2, 3, 4]) }, { name: 'b.png', data: new Uint8Array([5, 6, 7, 8]) }];
+    const blob = await mod.generateZipBlob(payload, new AbortController().signal);
+    const bytes = new Uint8Array(await blob.arrayBuffer());
+    return {
+      valid: mod.verifyZipBytes(bytes, 2),
+      wrongCount: mod.verifyZipBytes(bytes, 5),
+      truncated: mod.verifyZipBytes(bytes.slice(0, Math.floor(bytes.length / 2)), 2),
+      garbage: mod.verifyZipBytes(new Uint8Array(100).fill(7), 2),
+      tooSmall: mod.verifyZipBytes(new Uint8Array(5), 1),
+    };
+  });
+  t.ok(verdicts.valid.ok, 'Geçerli arşiv doğrulamadan geçmedi: ' + verdicts.valid.problems.join(' '));
+  t.equal(verdicts.valid.entries, 2, 'Geçerli arşivde dosya sayısı yanlış okundu');
+  t.ok(!verdicts.wrongCount.ok, 'Yanlış dosya sayısı yakalanmadı');
+  t.includes(verdicts.wrongCount.problems.join(' '), 'uyuşmuyor', 'Dosya sayısı uyuşmazlığı mesajı yok');
+  t.ok(!verdicts.truncated.ok, 'Kesik arşiv yakalanmadı');
+  t.includes(verdicts.truncated.problems.join(' '), 'EOCD', 'Kesik arşiv mesajı EOCD demiyor');
+  t.ok(!verdicts.garbage.ok, 'Çöp veri geçerli sayıldı');
+  t.ok(!verdicts.tooSmall.ok, 'Çok küçük veri geçerli sayıldı');
+  t.equal(page.__pageErrors.length, 0, 'Doğrulamada sayfa hatası: ' + page.__pageErrors[0]);
+  await page.close();
+
+  // Uçtan uca: VERIFY_ZIP açıkken doğrulama aşaması çalışmalı ve sonuç yazılmalı.
+  const vPage = await openApp('/basic/');
+  await setStorage(vPage, { isp_config: JSON.stringify({ MIN_WIDTH: 0, MIN_HEIGHT: 0, ZIP_FILENAME: 'verify.zip', VERIFY_ZIP: true }) });
+  await runScan(vPage);
+  await vPage.evaluate(() => {
+    const root = document.getElementById('__image_scraper_v4__').shadowRoot;
+    [...root.querySelectorAll('.result-tabs button')].find(b => b.textContent === 'ZIP ve indirme').click();
+  });
+  await new Promise(resolve => setTimeout(resolve, 250));
+  await vPage.evaluate(() => document.getElementById('__image_scraper_v4__').shadowRoot.querySelector('.result-pane [class="primary"]').click());
+  await vPage.waitForFunction(() => {
+    const root = document.getElementById('__image_scraper_v4__').shadowRoot;
+    return !!root.querySelector('a.download-link') || (root.querySelector('.result-pane .status')?.textContent || '').startsWith('❌');
+  }, { timeout: 90000, polling: 100 });
+  const verified = await vPage.evaluate(() => {
+    const root = document.getElementById('__image_scraper_v4__').shadowRoot;
+    return {
+      status: root.querySelector('.result-pane .status')?.textContent || '',
+      hasVerifyStage: !!root.querySelector('.zip-stage[data-stage="verify"]'),
+      link: root.querySelector('a.download-link')?.download || '',
+    };
+  });
+  t.ok(verified.hasVerifyStage, 'Doğrulama aşaması rozeti yok');
+  t.includes(verified.status, 'doğrulandı', 'Başarı mesajında doğrulama bilgisi yok: ' + verified.status);
+  t.ok(!verified.status.startsWith('❌'), 'Doğrulama açıkken ZIP başarısız: ' + verified.status);
+  t.ok(verified.link.length > 0, 'Doğrulama açıkken indirme bağlantısı yok');
+  t.equal(vPage.__pageErrors.length, 0, 'Doğrulama senaryosunda sayfa hatası: ' + vPage.__pageErrors[0]);
+  await vPage.close();
+}
+
+// ---------------------------------------------------------------------------
+// Toplu seçim kısayolları: "tümünü seç" yerine sayfa / alan adı / formata göre
+// hedefli seçim. Etkilenecek görsel sayısı işlemden sonra bildirilir.
+if (only('Toplu seçim')) {
+  t.test('Toplu seçim: format/sayfa/alan adına göre seç ve kaldır');
+  const page = await openApp('/basic/');
+  await setStorage(page, { isp_config: JSON.stringify({ MIN_WIDTH: 0, MIN_HEIGHT: 0 }) });
+  await runScan(page);
+  await page.evaluate(() => document.getElementById('__image_scraper_v4__').shadowRoot.querySelector('.filter-open-button').click());
+  await new Promise(resolve => setTimeout(resolve, 400));
+
+  const bulk = await page.evaluate(() => {
+    const root = document.getElementById('__image_scraper_v4__').shadowRoot;
+    const selects = [...root.querySelectorAll('.bulk-row select')];
+    return {
+      selectCount: selects.length,
+      options: selects.map(select => [...select.options].filter(o => o.value).map(o => o.textContent)),
+      labels: selects.map(select => select.getAttribute('aria-label')),
+    };
+  });
+  t.equal(bulk.selectCount, 3, 'Üç toplu seçim kutusu beklenirdi');
+  t.ok(bulk.labels.every(Boolean), 'Toplu seçim kutularında aria-label yok');
+  t.ok(bulk.options[0].length >= 1, 'Sayfa seçenekleri boş (sayaçlar üretilmemiş)');
+  t.ok(bulk.options[1].length >= 1, 'Alan adı seçenekleri boş');
+  t.ok(bulk.options[0][0].includes('('), 'Seçeneklerde görsel sayısı yok: ' + bulk.options[0][0]);
+
+  // Seçim yapılmadan uyarı
+  const empty = await page.evaluate(() => {
+    const root = document.getElementById('__image_scraper_v4__').shadowRoot;
+    root.querySelectorAll('.bulk-row button')[0].click();
+    return root.querySelector('.bulk-count')?.textContent || '';
+  });
+  t.includes(empty, 'seç', 'Seçimsiz durumda yönlendirme mesajı yok: ' + empty);
+
+  // Formata göre seç → tümü seçili, sonra kaldır → hiçbiri
+  const toggled = await page.evaluate(() => {
+    const root = document.getElementById('__image_scraper_v4__').shadowRoot;
+    const fmt = [...root.querySelectorAll('.bulk-row select')][2];
+    fmt.value = [...fmt.options].find(o => o.value)?.value || '';
+    // NOT: galeri sanallaştırılmıştır; DOM'daki kart sayısı seçili görsellerin
+    // tamamını göstermez. Bu yüzden seçim sayısı üstteki "Seçili görsel"
+    // metriğinden okunur (10/12 hatası bu varsayımdan kaynaklanmıştı).
+    // DİKKAT: .header-metric .metric-value ilk metrik "Benzersiz görsel"dir;
+    // seçili sayısı için etiket metnine göre aramak gerekir.
+    const selectedMetric = () => {
+      const metric = [...root.querySelectorAll('.header-metric')]
+        .find(m => (m.querySelector('.metric-label')?.textContent || '').includes('Seçili'));
+      return Number(metric?.querySelector('.metric-value')?.textContent || 0);
+    };
+    // Tarama sonrası görseller varsayılan olarak seçilidir. Testin anlamlı
+    // olması için önce seçimi sıfırla; sonra toplu seçimin eklediğini ölç.
+    const selectNone = [...root.querySelectorAll('.toolbar button')].find(b => b.textContent.includes('kaldır') && b.textContent.includes('Filtredekileri'));
+    selectNone?.click();
+    const before = selectedMetric();
+    root.querySelectorAll('.bulk-row button')[0].click();
+    const first = { msg: root.querySelector('.bulk-count')?.textContent || '', selected: selectedMetric(), before };
+    root.querySelectorAll('.bulk-row button')[0].click();
+    const second = { msg: root.querySelector('.bulk-count')?.textContent || '', selected: selectedMetric() };
+    return { first, second };
+  });
+  t.includes(toggled.first.msg, 'değiştirildi', 'Seçim mesajı beklenen biçimde değil: ' + toggled.first.msg);
+  t.ok(toggled.first.selected > 0, `Toplu seçim hiçbir görseli seçmedi (önce ${toggled.first.before}, sonra ${toggled.first.selected})`);
+  t.equal(toggled.second.selected, 0, `İkinci tıklama seçimi kaldırmadı (${toggled.second.selected} seçili kaldı)`);
+
+  // "Seçime ekle" tekrar seçer
+  const added = await page.evaluate(() => {
+    const root = document.getElementById('__image_scraper_v4__').shadowRoot;
+    root.querySelectorAll('.bulk-row button')[1].click();
+    const selected = Number([...root.querySelectorAll('.header-metric')].find(m => (m.querySelector('.metric-label')?.textContent || '').includes('Seçili'))?.querySelector('.metric-value')?.textContent || 0);
+    return { msg: root.querySelector('.bulk-count')?.textContent || '', selected };
+  });
+  t.includes(added.msg, 'eklendi', '"Seçime ekle" mesajı yok: ' + added.msg);
+  t.ok(added.selected > 0, '"Seçime ekle" görsel seçmedi');
+
+  t.equal(page.__pageErrors.length, 0, 'Toplu seçimde sayfa hatası: ' + page.__pageErrors[0]);
   await page.close();
 }
 

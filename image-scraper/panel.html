@@ -12,7 +12,12 @@
   <!-- Complete settings UI structure lives here; app.js only binds state and actions. -->
   <template id="isp-settings-navigation-template">
     <div class="settings-navigation" x-data="{ active: 'general' }">
-      <div class="settings-tabs" role="tablist" aria-label="Ayar kategorileri">
+      <div class="settings-search">
+          <input data-control="settingsSearch" type="search" placeholder="Ayar ara… (örn. zip, boyut, seçici)" aria-label="Ayarlarda ara" autocomplete="off" role="searchbox">
+          <button data-action="settings-search-clear" type="button" class="secondary" aria-label="Aramayı temizle" hidden>×</button>
+        </div>
+        <p class="settings-search-result muted" data-control="settingsSearchResult" role="status" aria-live="polite" hidden></p>
+        <div class="settings-tabs" role="tablist" aria-label="Ayar kategorileri">
         <button type="button" role="tab" id="isp-general-tab" aria-controls="isp-general-panel" aria-selected="true" tabindex="0" data-tab-key="general" x-bind:aria-selected="active === 'general'" x-bind:tabindex="active === 'general' ? 0 : -1">⚙️ Genel</button>
         <button type="button" role="tab" id="isp-scan-tab" aria-controls="isp-scan-panel" aria-selected="false" tabindex="-1" data-tab-key="scan" x-bind:aria-selected="active === 'scan'" x-bind:tabindex="active === 'scan' ? 0 : -1">🔎 Tarama</button>
         <button type="button" role="tab" id="isp-images-tab" aria-controls="isp-images-panel" aria-selected="false" tabindex="-1" data-tab-key="images" x-bind:aria-selected="active === 'images'" x-bind:tabindex="active === 'images' ? 0 : -1">🖼 Görseller</button>
@@ -75,9 +80,11 @@
             <label><span>Parça başına dosya sınırı</span><input data-control="maxFiles" type="number" min="1" max="10000"></label>
             <label><span>Parça başına MB sınırı</span><input data-control="maxMB" type="number" min="1" max="2000"></label>
             <label><span>Aynı dosya içeriğini ZIP’ten çıkar <span class="help-tip" tabindex="0" data-tooltip="SHA-256 ile bayt bayt aynı içerikleri tespit eder; URL tekrarı ve görsel benzerliğinden ayrıdır." aria-label="SHA-256 tekilleştirme hakkında bilgi"></span></span><input data-control="dedupe" type="checkbox"></label>
+            <label><span>ZIP bütünlüğünü doğrula <span class="help-tip" tabindex="0" data-tooltip="Arşiv üretildikten sonra dosya sayısı ve merkezi dizin kontrol edilir; bozuksa başarı mesajı verilmez. Büyük arşivlerde ek bellek kullanır, bu yüzden varsayılan kapalıdır." aria-label="ZIP doğrulama hakkında bilgi"></span></span><input data-control="verifyZip" type="checkbox"></label>
             <label><span>Benzer görselleri grupla <span class="help-tip" tabindex="0" data-tooltip="Algısal benzerlik raporlanır; görseller otomatik silinmez veya ZIP’ten çıkarılmaz." aria-label="Benzer görseller hakkında bilgi"></span></span><input data-control="visualGroups" type="checkbox"></label>
             <label><span>ZIP’i seçilen klasöre akışla yaz <span class="help-tip" tabindex="0" data-tooltip="Destekleyen Chromium tarayıcılarında klasör seçtirir. Görsel verileri işlem bitene kadar bellekte kalır." aria-label="ZIP akışı hakkında bilgi"></span></span><input data-control="streamZip" type="checkbox"></label>
             <label class="column"><span>Dosya adı şablonu <span class="help-tip" tabindex="0" data-tooltip="Değişkenler: {sira}, {sayfa}, {orijinal_ad}, {boyut}." aria-label="Dosya adı şablonu hakkında bilgi"></span></span><input data-control="template"></label>
+            <p class="template-preview muted" data-control="templatePreview" role="status" aria-live="polite"></p>
           </section>
         </div>
         <div role="tabpanel" id="isp-excluded-panel" aria-labelledby="isp-excluded-tab" x-show="active === 'excluded'" x-cloak>

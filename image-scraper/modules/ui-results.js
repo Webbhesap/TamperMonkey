@@ -4,7 +4,7 @@
   modules.createResultsUI = function createResultsUI(deps) {
     const { $el, dialog, section, ui, readJSON, deleteKey, DEFAULTS, SESSION_KEY, CACHE_KEY, CACHE_CAP, GM_getValue, GM_setValue,
       formatBytes, etaSeconds, formatEta, encodeData, decodeData, adaptivePool, copyText, displayUrl, buildDiagnosticSummary,
-      safeBaseName, zipName, zipEntryName, createUniqueZipFile, saveBlob, generateZipToWritable, generateZipBlob,
+      safeBaseName, zipName, zipEntryName, createUniqueZipFile, saveBlob, generateZipToWritable, generateZipBlob, verifyZipBytes,
       downloadImageRetry, imageFormat, perceptualHash, hashDistance, smartFitMode, checkAbort, isAbort, location, document, window,
       URL, Blob, AbortController, TextEncoder, crypto } = deps;
     if (typeof smartFitMode !== 'function') throw new Error('Slayt gösterisi akıllı sığdırma işlevi bağlanamadı.');
@@ -246,6 +246,65 @@
       const previews = $el('input', { type: 'checkbox', checked: true });
       const previewLabel = $el('label', { class: 'compact' }); previewLabel.append(previews, $el('span', {}, 'Önizlemeleri yükle'));
       row3.append(selectAll, selectNone, slideshowLaunch, previewLabel); tools.appendChild(row3);
+      // ---------------------------------------------------------------------
+      // Toplu seçim kısayolları: "tümünü seç" çoğu zaman istenen şey değil.
+      // Kullanıcı belirli bir sayfanın / alan adının / formatın görsellerini
+      // seçebilsin. Her işlem etkilenecek sayıyı önce bildirir (yanlışlıkla
+      // binlerce görsel seçmeyi önler).
+      // ---------------------------------------------------------------------
+      const bulkRow = $el('div', { class: 'toolbar bulk-row' });
+      const bulkPage = $el('select', { 'aria-label': 'Sayfaya göre seçim' });
+      const bulkHost = $el('select', { 'aria-label': 'Alan adına göre seçim' });
+      const bulkFormat = $el('select', { 'aria-label': 'Formata göre seçim' });
+      const bulkCount = $el('p', { class: 'muted bulk-count', role: 'status', 'aria-live': 'polite' });
+      const pageOf = img => img.page || '';
+      const hostOf = img => { try { return new URL(img.url).host; } catch { return ''; } };
+      const formatOf = img => String(img.ext || '').toLowerCase() || 'bilinmiyor';
+      const uniqueValues = (list, getter) => [...new Set(list.map(getter).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'tr'));
+      const rebuildBulkOptions = () => {
+        const fill = (select, values, allLabel, getter, label) => {
+          const previous = select.value;
+          select.replaceChildren($el('option', { value: '' }, allLabel));
+          for (const value of values) select.appendChild($el('option', { value }, `${label(value)} (${images.filter(i => getter(i) === value).length})`));
+          // Seçim korunur: render() sırasında değer kaybolursa ikinci tıklama
+          // "seçim yapılmadı" der. Seçenek listesi değişse bile (ör. indirme
+          // sonrası format bilgisi eklenmesi) önceki değer geri yazılır.
+          select.value = [...select.options].some(o => o.value === previous) ? previous : '';
+        };
+        fill(bulkPage, uniqueValues(images, pageOf), 'Sayfa seç…', pageOf, v => { try { return new URL(v).pathname || v; } catch { return v; } });
+        fill(bulkHost, uniqueValues(images, hostOf), 'Alan adı seç…', hostOf, v => v);
+        fill(bulkFormat, uniqueValues(images, formatOf), 'Format seç…', formatOf, v => v);
+      };
+      const applyBulk = (getter, select, extend) => {
+        const value = select.value;
+        if (!value) { bulkCount.textContent = ''; return; }
+        const targets = images.filter(img => getter(img) === value);
+        if (!targets.length) { bulkCount.textContent = 'Eşleşen görsel yok.'; return; }
+        let changed = 0;
+        for (const img of targets) {
+          const next = extend ? true : !img.selected;
+          if (img.selected !== next) changed++;
+          img.selected = next;
+        }
+        bulkCount.textContent = extend
+          ? `${targets.length} görsel seçime eklendi (${changed} değişti).`
+          : `${targets.length} görselin seçimi değiştirildi.`;
+        grid.scrollTop = 0; render(); scheduleSave();
+      };
+      const bulkToggle = $el('button', { type: 'button', class: 'secondary' }, 'Aralığı seç / kaldır');
+      const bulkAdd = $el('button', { type: 'button', class: 'secondary' }, 'Seçime ekle');
+      // NOT: her üç seçici aynı anda değerlendirilir; hangisi doluysa o uygulanır.
+      // (Burada `||` zinciri kullanılmaz: applyBulk undefined döndüğü için
+      // üçünü birden çalıştırırdı.)
+      const runBulk = extend => {
+        const picks = [[pageOf, bulkPage], [hostOf, bulkHost], [formatOf, bulkFormat]].filter(([, select]) => select.value);
+        if (!picks.length) { bulkCount.textContent = 'Önce bir sayfa, alan adı veya format seç.'; return; }
+        for (const [getter, select] of picks) applyBulk(getter, select, extend);
+      };
+      bulkToggle.onclick = () => runBulk(false);
+      bulkAdd.onclick = () => runBulk(true);
+      bulkRow.append(bulkPage, bulkHost, bulkFormat, bulkToggle, bulkAdd);
+      tools.append(bulkRow, bulkCount);
       const explanation = $el('p', { class: 'muted' }, 'Filtreler yalnızca görünümü değiştirir; ZIP ve dışa aktarım filtre dışında kalanlar dâhil tüm seçili görselleri kullanır. Bilinmeyen dosya boyutları aralık filtresinde korunur. Önizleme, görsel sunucularına yeni istek gönderebilir.'); tools.appendChild(explanation);
       const grid = $el('div', { class: 'gallery', role: 'region', tabindex: 0, 'aria-label': 'Görsel galerisi' }); galleryPane.appendChild(grid);
       const gridNote = d.subtitle;
@@ -407,6 +466,9 @@
       const VIRTUAL_CARD_HEIGHT = 320, VIRTUAL_OVERSCAN_ROWS = 2;
       let galleryRenderPending = false, cachedFilteredList = null, cachedSelectionList = null;
       function render(refreshData = true) {
+        // Toplu seçim seçenekleri görsel listesine göre tazelenir; böylece
+        // yeni tarama veya filtre sonrası sayaçlar güncel kalır.
+        rebuildBulkOptions();
         const savedScrollTop = Number(grid.scrollTop) || 0;
         if (refreshData || !cachedFilteredList) cachedFilteredList = filtered();
         if (refreshData || !cachedSelectionList) cachedSelectionList = selection();
@@ -818,11 +880,83 @@
       };
       cancel.onclick = () => zipController?.abort();
       d.setOnClose(() => { galleryClosed = true; grid.removeEventListener('scroll', scheduleGalleryRender); window.removeEventListener('resize', scheduleGalleryRender); zipController?.abort(); clearTimeout(saveTimer); if (remember) persist(); objectUrls.forEach(URL.revokeObjectURL); });
+      // ---------------------------------------------------------------------
+      // ZIP aşamaları: kullanıcı "🗜️ ZIP 1/1 · 0%" gibi tek satırlık bir
+      // mesajla baş başa kalıyordu ve işlemin nerede olduğunu anlayamıyordu.
+      // Artık her aşama ayrı gösterilir; ayrıca uzun süre ilerleme gelmezse
+      // "takıldı" durumu ve iptal/tekrar dene yolu sunulur.
+      // ---------------------------------------------------------------------
+      const zipStages = [
+        ['download', '⬇️ İndirme'],
+        ['analysis', '🧩 Benzerlik analizi'],
+        ['dedupe', '🔍 Tekilleştirme'],
+        ['archive', '🗜️ Arşiv oluşturma'],
+        ['verify', '🔎 Doğrulama'],
+        ['ready', '✅ Hazır'],
+      ];
+      const stageBar = $el('div', { class: 'zip-stages', role: 'group', 'aria-label': 'ZIP aşamaları' });
+      for (const [key, label] of zipStages) {
+        stageBar.appendChild($el('span', { class: 'zip-stage', 'data-stage': key }, label));
+      }
+      const stallBox = $el('div', { class: 'zip-stall', role: 'alert' });
+      const stallText = $el('span', {});
+      const retryFailedButton = $el('button', { type: 'button', class: 'secondary' }, '↻ Yalnızca başarısızları yeniden dene');
+      const retryZipButton = $el('button', { type: 'button', class: 'secondary' }, '↻ ZIP’i yeniden dene');
+      stallBox.append(stallText, retryFailedButton, retryZipButton);
+      progress.after(stallBox); progress.after(stageBar);
+
+      let activeStage = null, lastProgressAt = 0, stallTimer = null, failedItems = [], zipVerification = '';
+      const STALL_MS = 20000;
+      const setStage = key => {
+        activeStage = key;
+        lastProgressAt = Date.now();
+        for (const node of stageBar.querySelectorAll('.zip-stage')) {
+          const isDone = zipStages.findIndex(([k]) => k === key) > zipStages.findIndex(([k]) => k === node.dataset.stage);
+          node.classList.toggle('is-active', node.dataset.stage === key);
+          node.classList.toggle('is-done', isDone);
+        }
+        stageBar.hidden = !key;
+      };
+      const touchProgress = () => { lastProgressAt = Date.now(); stallBox.hidden = true; };
+      const stopStallWatch = () => { clearInterval(stallTimer); stallTimer = null; stallBox.hidden = true; };
+      const startStallWatch = () => {
+        lastProgressAt = Date.now();
+        clearInterval(stallTimer);
+        stallTimer = setInterval(() => {
+          if (!activeStage || activeStage === 'ready' || zipController === null) return;
+          const idle = Date.now() - lastProgressAt;
+          if (idle < STALL_MS) return;
+          const label = zipStages.find(([k]) => k === activeStage)?.[1] || activeStage;
+          stallText.textContent = `${label} adımı ${Math.round(idle / 1000)} sn’dir ilerlemiyor. ` +
+            'İptal edip tekrar deneyebilirsin; büyük arşivlerde tarayıcı belleği dolduğunda bu olabilir ' +
+            '(parça başına MB sınırını düşürmeyi dene).';
+          stallBox.hidden = false;
+          // İptal her zaman, yeniden deneme yalnızca işlem bittiğinde anlamlı.
+          retryZipButton.hidden = false;
+          retryFailedButton.hidden = failedItems.length === 0;
+        }, 1000);
+      };
+
+      // "Yalnızca başarısızları yeniden dene": başarılı görseller önbellekten
+      // (downloaded Map) kullanılır, yalnızca hatalılar yeniden indirilir.
+      // Tüm arşivi yeniden indirmek büyük oturumlarda dakikalar sürüyordu.
+      retryFailedButton.onclick = () => {
+        if (!failedItems.length || zipController) return;
+        for (const img of failedItems) img.selected = true;
+        for (const img of images) if (!failedItems.includes(img)) img.selected = false;
+        failedItems = [];
+        retryFailedButton.hidden = true;
+        zip.onclick();
+      };
+      retryZipButton.onclick = () => { if (!zipController) { retryZipButton.hidden = true; zip.onclick(); } };
+
       zip.onclick = async () => {
         if (zipController) return;
         const selected = selection(); if (!selected.length) return;
         zipController = new AbortController(); const signal = zipController.signal;
         zip.disabled = true; cancel.hidden = false; progress.hidden = false; progress.value = 0;
+        failedItems = []; zipVerification = ''; retryFailedButton.hidden = true; retryZipButton.hidden = true;
+        setStage('download'); startStallWatch();
         let same = 0, gm = 0, cached = 0, failed = 0, bytesTotal = 0;
         const errors = [], verificationUrls = new Map();
         details.hidden = true; errorList.textContent = ''; verifyLinks.replaceChildren();
@@ -856,15 +990,15 @@
               results[i] = item; bytesTotal += item.data.byteLength;
             } catch (e) {
               if (isAbort(e)) throw e;
-              failed++; img.status = 'hata'; img.error = e.message; errors.push(`${img.url} — ${e.message}`);
+              failed++; img.status = 'hata'; img.error = e.message; errors.push(`${img.url} — ${e.message}`); failedItems.push(img);
               if (e.challenge) verificationUrls.set(new URL(img.url).origin, img.url);
               console.warn('[Image Scraper]', img.url, e);
             }
             scheduleSave();
-          }, (done, total, state) => { progress.value = Math.round(done / total * 75); const eta = etaLabel(done, total, downloadStartedAt); status.textContent = `⬇️ ${done}/${total} · yeni: ${same + gm} · önbellek: ${cached} · hata: ${failed}${eta ? ` · ${eta}` : ''}`; updateResourceStatus(state.active, state.limit, done, total, downloadStartedAt); }, signal, adaptiveConcurrency);
+          }, (done, total, state) => { touchProgress(); progress.value = Math.round(done / total * 75); const eta = etaLabel(done, total, downloadStartedAt); status.textContent = `⬇️ ${done}/${total} · yeni: ${same + gm} · önbellek: ${cached} · hata: ${failed}${eta ? ` · ${eta}` : ''}`; updateResourceStatus(state.active, state.limit, done, total, downloadStartedAt); }, signal, adaptiveConcurrency);
           checkAbort(signal); render();
           if (c.GROUP_VISUAL_SIMILARITY) {
-            status.textContent = '🧩 Benzer görseller karşılaştırılıyor…';
+            setStage('analysis'); touchProgress(); status.textContent = '🧩 Benzer görseller karşılaştırılıyor…';
             const indexedHashes = [];
             const analysisLimit = Math.min(results.length, 1000);
             for (let i = 0; i < analysisLimit; i++) {
@@ -928,11 +1062,14 @@
             part.push(file); size += n;
           }
           if (part.length) parts.push(part);
+          setStage('dedupe'); touchProgress();
           const zipStartedAt = Date.now(), zipTotalBytes = files.reduce((sum, file) => sum + file.data.byteLength, 0);
+          setStage('archive'); touchProgress();
           let zipDoneBytes = 0;
           for (let p = 0; p < parts.length; p++) {
             const currentPartBytes = parts[p].reduce((sum, file) => sum + file.data.byteLength, 0);
             const reportZipProgress = pct => {
+              touchProgress();
               progress.value = 75 + Math.round((p + pct / 100) / parts.length * 25);
               const doneBytes = zipDoneBytes + currentPartBytes * pct / 100;
               const eta = etaLabel(doneBytes, zipTotalBytes, zipStartedAt);
@@ -948,7 +1085,18 @@
               manual.appendChild($el('p', { class: 'muted' }, `✅ Klasöre yazıldı: ${name} · ${formatBytes(archiveBytes)}`));
             } else {
               const blob = await generateZipBlob(parts[p], signal, reportZipProgress);
-              checkAbort(signal); const url = URL.createObjectURL(blob); objectUrls.push(url);
+              checkAbort(signal);
+              // Bütünlük kontrolü (isteğe bağlı): bozuk arşivi "başarılı" diye
+              // sunmak yerine açık hata ver. Bellek maliyeti nedeniyle kapalı
+              // varsayılandadır; açıksa baytlar bir kez okunur.
+              if (c.VERIFY_ZIP) {
+                setStage('verify'); touchProgress(); status.textContent = '🔎 Arşiv bütünlüğü doğrulanıyor…';
+                const bytes = new Uint8Array(await blob.arrayBuffer());
+                const verdict = verifyZipBytes(bytes, parts[p].length);
+                if (!verdict.ok) throw new Error('ZIP doğrulaması başarısız: ' + verdict.problems.join(' '));
+                zipVerification = `${verdict.entries} dosya · ${(verdict.byteLength / 1048576).toFixed(1)} MB doğrulandı`;
+              }
+              const url = URL.createObjectURL(blob); objectUrls.push(url);
               const link = $el('a', { class: 'download-link', href: url, download: proposedName }, `⬇ ${proposedName} (${formatBytes(blob.size)})`);
               manual.appendChild(link); manual.appendChild($el('span', {}, ' '));
               if (parts.length === 1) link.click();
@@ -956,10 +1104,13 @@
             zipDoneBytes += currentPartBytes;
           }
           progress.value = 100; render(); scheduleSave();
-          status.textContent = `✅ ${parts.length} ZIP ${streamingDirectory ? 'seçilen klasöre akışla yazıldı' : 'hazır'} · ${same + gm + cached} indirildi · ${failed} hata. ${streamingDirectory ? 'ZIP arşivinin ek kopyası bellekte oluşturulmadı; görsel verileri bellekte tutulur.' : parts.length > 1 ? 'Her parçayı aşağıdan ayrı indirin.' : 'İndirme başlamazsa bağlantıya tıklayın.'}`;
+          setStage('ready'); stopStallWatch(); retryZipButton.hidden = true; retryFailedButton.hidden = failedItems.length === 0;
+          status.textContent = `✅ ${parts.length} ZIP ${streamingDirectory ? 'seçilen klasöre akışla yazıldı' : 'hazır'} · ${same + gm + cached} indirildi · ${failed} hata${zipVerification ? ` · ${zipVerification}` : ''}. ${streamingDirectory ? 'ZIP arşivinin ek kopyası bellekte oluşturulmadı; görsel verileri bellekte tutulur.' : parts.length > 1 ? 'Her parçayı aşağıdan ayrı indirin.' : 'İndirme başlamazsa bağlantıya tıklayın.'}`;
         } catch (e) {
+          stopStallWatch();
           status.textContent = isAbort(e) ? '⏹️ ZIP işlemi iptal edildi.' : '❌ ' + e.message;
-          if (!isAbort(e)) console.error('[Image Scraper]', e);
+          if (!isAbort(e)) { console.error('[Image Scraper]', e); retryZipButton.hidden = false; }
+          else retryZipButton.hidden = false;
         } finally { zipController = null; render(); cancel.hidden = true; }
       };
     }

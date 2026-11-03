@@ -85,6 +85,7 @@
     SAVE_SCAN_PROGRESS: false,
     GROUP_VISUAL_SIMILARITY: false,
     STREAM_ZIP_TO_DISK: false,
+    VERIFY_ZIP: false,
     DEEP_CRAWL: false,
     ARTICLE_LINK_SELECTOR: '',
     ARTICLE_TITLE_SELECTOR: 'h1',
@@ -111,7 +112,7 @@
   const checkAbort = signal => { if (signal && signal.aborted) throw abortError(); };
   const createZipModule = global.ImageScraperModules?.createZipModule;
   if (typeof createZipModule !== 'function') throw new Error('ZIP modülü yüklenemedi. Loader @require sırasını kontrol et.');
-  const { safeBaseName, zipName, zipEntryName, createUniqueZipFile, saveBlob, generateZipBlob, generateZipToWritable } =
+  const { safeBaseName, zipName, zipEntryName, createUniqueZipFile, saveBlob, generateZipBlob, generateZipToWritable, verifyZipBytes } =
     createZipModule({ $el, document, URL, Blob, Uint8Array, checkAbort, abortError });
   const createNetworkModule = global.ImageScraperModules?.createNetworkModule;
   if (typeof createNetworkModule !== 'function') throw new Error('Ağ modülü yüklenemedi. Loader @require sırasını kontrol et.');
@@ -134,7 +135,7 @@
         c[k] = clampInt(c[k], min, max, DEFAULTS[k]);
       }
       c.DYNAMIC_STEPS = clampInt(c.DYNAMIC_STEPS, 0, Number.MAX_SAFE_INTEGER, DEFAULTS.DYNAMIC_STEPS);
-      for (const k of ['CHECK_REAL_SIZE', 'USE_SELECTOR', 'USE_REPLACE', 'DECODE_URL', 'RETRY_REFERER', 'EXCLUDE_UNKNOWN', 'DYNAMIC_SCROLL', 'DEDUPE_CONTENT', 'STOP_DUPLICATE_PAGES', 'PREVIEW_PAGE_QUEUE', 'SAVE_SCAN_PROGRESS', 'GROUP_VISUAL_SIMILARITY', 'STREAM_ZIP_TO_DISK', 'DEEP_CRAWL']) c[k] = c[k] === true;
+      for (const k of ['CHECK_REAL_SIZE', 'USE_SELECTOR', 'USE_REPLACE', 'DECODE_URL', 'RETRY_REFERER', 'EXCLUDE_UNKNOWN', 'DYNAMIC_SCROLL', 'DEDUPE_CONTENT', 'STOP_DUPLICATE_PAGES', 'PREVIEW_PAGE_QUEUE', 'SAVE_SCAN_PROGRESS', 'GROUP_VISUAL_SIMILARITY', 'STREAM_ZIP_TO_DISK', 'VERIFY_ZIP', 'DEEP_CRAWL']) c[k] = c[k] === true;
       if (!['auto','html-slash','query-page','page-path','slash-page','dash-html','underscore-html','custom'].includes(c.PAGINATION_MODE)) c.PAGINATION_MODE = 'auto';
       if (!['any','same-host','selected-hosts'].includes(c.IMAGE_SOURCE_MODE)) c.IMAGE_SOURCE_MODE = 'any';
       for (const k of ['SELECTOR', 'NEXT_SELECTOR', 'ZIP_FILENAME', 'SKIP_PATTERNS', 'NAME_TEMPLATE', 'CUSTOM_PAGINATION_TEMPLATE', 'IMAGE_SOURCE_HOSTS', 'ARTICLE_LINK_SELECTOR', 'ARTICLE_TITLE_SELECTOR', 'ARTICLE_NEXT_SELECTOR']) if (typeof c[k] !== 'string') c[k] = DEFAULTS[k];
@@ -820,7 +821,7 @@
   if (typeof createResultsUI !== 'function') throw new Error('Sonuç arayüzü modülü yüklenemedi. Loader @require sırasını kontrol et.');
   const showResults = createResultsUI({ $el, dialog, section, ui, readJSON, deleteKey, DEFAULTS, SESSION_KEY, CACHE_KEY, CACHE_CAP, GM_getValue, GM_setValue,
     formatBytes, etaSeconds, formatEta, encodeData, decodeData, adaptivePool, copyText, displayUrl, buildDiagnosticSummary,
-    safeBaseName, zipName, zipEntryName, createUniqueZipFile, saveBlob, generateZipToWritable, generateZipBlob,
+    safeBaseName, zipName, zipEntryName, createUniqueZipFile, saveBlob, generateZipToWritable, generateZipBlob, verifyZipBytes,
     downloadImageRetry, imageFormat, perceptualHash, hashDistance, smartFitMode, checkAbort, isAbort, location, document, window,
     URL, Blob, AbortController, TextEncoder, crypto: global.crypto });
 
