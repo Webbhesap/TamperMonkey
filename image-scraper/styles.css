@@ -265,3 +265,29 @@ details{border:1px solid #384157;background:#1a2130;border-radius:10px;padding:1
 /* Sekme çubuğu kayarken üstte kalsın: sekmeler arası geçiş her zaman erişilebilir. */
 .settings-dialog .settings-search{position:sticky;top:0;z-index:3;padding-top:2px;background:var(--isp-surface-1)}
 .settings-dialog .settings-tabs{position:sticky;top:0;z-index:2;background:var(--isp-surface-1)}
+
+/* --- Sonuç başlığı: dar ekranda üst üste binme ----------------------------
+   Sorun (800px ölçümü): başlık metni altı satıra sarıp metrik kartlarının
+   altına giriyordu ve "Seçili görsel" etiketi kesiliyordu. Başlık artık
+   kendi satırını alır, metrikler altında tam genişlikte akar. */
+@media (max-width:1000px){
+  .result-header{flex-direction:column;align-items:stretch;gap:var(--isp-gap-3)}
+  .result-header .identity{order:0;width:100%}
+  .result-header .close{order:0;position:absolute;top:16px;right:16px}
+  .result-header{position:relative;padding-right:52px}
+  .result-header .header-metrics{order:1;flex:1 1 auto;justify-content:flex-start;flex-wrap:wrap}
+  .result-header .header-metric{flex:1 1 110px;min-width:0}
+  .result-header .header-metric .metric-label{white-space:normal}
+}
+/* Metrik kutuları çok darsa etiket kırpılmasın: iki satıra izin ver. */
+.result-header .header-metric .metric-label{line-height:1.3}
+.result-pane{padding:16px 20px 40px}
+@media (max-width:640px){
+  .result-pane{padding:12px 12px 32px}
+  .result-pane .gallery{grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;grid-auto-rows:280px}
+  .result-pane .image-card{height:280px}
+  .result-pane .image-card .thumb-wrap{flex:0 0 150px;height:150px}
+  .result-pane .image-card .meta{padding:8px 10px 10px;font-size:11px}
+  .result-tabs{padding:0 12px}
+  .result-tabs button{padding:10px 10px;font-size:12px}
+}
