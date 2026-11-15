@@ -88,8 +88,69 @@ toplar, türü çevresindeki anahtarlardan (`movie`/`show`/`episode`) tahmin ede
 - **Filmler / Bölümler / Türü belirsiz**: normalde açık kalsın.
 - **Diziler (gövde)**: bölüm düzeyinde geçmişin varsa bunu **kapatmanı** öneririm;
   hem gövde hem bölümler işaretlenirse IMDb'de aynı içerik iki kez işaretli görünür
-  (teknik olarak hata değil, ama gereksiz).
+  (teknik olarak hata değil, ama gereksiz). Kuyrukta ikisi birden varsa betik artık
+  kendiliğinden uyarır.
 - **Sezonlar / Kişiler**: IMDb'de karşılığı yok, kapalı gelir.
+
+İki hazır ayar düğmesi var: **"Yalnız bölümler"** (film + gövde + belirsiz kapanır) ve
+**"Film + gövde"** (bölümler kapanır).
+
+### 2b) `watched-history-*.json`'dan yalnız bölümleri almak
+
+Trakt'ın geçmiş dosyasında her kayıt **hem dizi gövdesini hem bölümü** taşır:
+
+```json
+{
+  "id": 912345,
+  "watched_at": "2025-10-03T20:14:11.000Z",
+  "action": "scrobble",
+  "type": "episode",
+  "episode": { "season": 3, "number": 1, "title": "Mother!", "ids": { "trakt": 88, "imdb": "tt1190634" } },
+  "show":    { "title": "Monster", "year": 2022, "ids": { "trakt": 2, "imdb": "tt13207736" } }
+}
+```
+
+Betik ikisini de toplar ama **türünü bilir** (`episode` / `show` / `movie`), dolayısıyla
+süzme işi filtre kutularına kalır:
+
+**Yol 1 — betik içinde (önerilen).** Dosyaları seç → **"Yalnız bölümler"** düğmesi →
+kuru koşu ile sayılara bak (log'da `bölüm N`, `bilinmeyen 0` olmalı) → koş.
+Gövde `tt`'leri hiç isteğe girmez.
+
+**Yol 2 — listeyi dosya olarak almak.** Aynı filtreyi uygula, sonra
+**7 · Dışa aktar → "Kuyruk CSV"**. Eline `const,type,label` kolonlu, **yalnız
+bölümlerden** oluşan bir CSV geçer. Başlık kolonu bilerek `const` (IMDb'nin kendi
+biçimi): dosyayı hem bu betiğe tekrar girdi olarak yükleyebilirsin, hem IMDb Ratings
+Importer'a (`const` + `your rating`) verebilirsin, hem de düz `tt` listesi olarak
+saklayabilirsin.
+
+**Yol 3 — betiksiz, dosyadan süzme.** Geçmiş dosyalarından bölüm `tt`'lerini ayıklamak
+istiyorsan:
+
+```bash
+# jq (Linux/macOS/WSL): sayfalanmış tüm dosyaları birden verir
+jq -r '.[] | select(.type=="episode") | .episode.ids.imdb // empty' watched-history-*.json \
+  | sort -u > episodes.txt
+```
+
+```powershell
+# PowerShell (Windows): her dosyayı sırayla işler, tek liste üretir
+$out = foreach ($f in Get-ChildItem watched-history-*.json) {
+  (Get-Content $f.FullName -Raw | ConvertFrom-Json) |
+    Where-Object { $_.type -eq 'episode' -and $_.episode.ids.imdb } |
+    ForEach-Object { $_.episode.ids.imdb }
+}
+$out | Sort-Object -Unique | Set-Content episodes.txt
+"$($out.Count) ham kayıt, $(($out | Sort-Object -Unique).Count) benzersiz bölüm"
+```
+
+Çıkan `episodes.txt` dosyasını betiğin **1 · Girdi** kutusuna olduğu gibi
+yapıştırabilirsin (alt alta `tt…` metnini tanır).
+
+> Not: bazı Trakt bölümlerinde `imdb` alanı **boş** (`null`) gelir. `jq`'daki `// empty`
+> ve PowerShell'deki `-and $_.episode.ids.imdb` koşulu bunları düşürür; betik de aynı
+> öğeleri atlayıp sayısını loga yazar. IMDb kimliği olmayan bölüm hiçbir yolla
+> işaretlenemez.
 
 ### 3) Kuru koşu + tek öğe denemesi
 

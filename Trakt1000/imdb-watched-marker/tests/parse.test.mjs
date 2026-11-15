@@ -157,6 +157,48 @@ test('countByType özet sayar', () => {
   assert.equal(c.unknown, 1);
 });
 
+test('trakt history kaydı: gövde + bölüm birlikte gelir, filtreyle yalnız bölümler kalır', () => {
+  const json = JSON.stringify([
+    {
+      id: 1, watched_at: '2025-10-03T20:14:11.000Z', action: 'scrobble', type: 'episode',
+      episode: { season: 3, number: 1, title: 'Mother!', ids: { trakt: 88, imdb: 'tt1190634' } },
+      show: { title: 'Monster', year: 2022, ids: { trakt: 2, imdb: 'tt13207736' } }
+    },
+    {
+      id: 2, watched_at: '2024-05-01T20:00:00.000Z', action: 'scrobble', type: 'movie',
+      movie: { title: 'Dune', year: 2021, ids: { trakt: 5, imdb: 'tt1160419' } }
+    }
+  ]);
+  const r = pure.extractIds(json, { source: 'watched-history-1.json' });
+  assert.equal(r.format, 'json');
+  assert.deepEqual(r.items.map((i) => [i.id, i.type]),
+    [['tt1190634', 'episode'], ['tt13207736', 'show'], ['tt1160419', 'movie']]);
+  assert.match(r.items[0].label, /Mother!/);
+  assert.match(r.items[0].label, /S03E01/);
+
+  // "Yalnız bölümler" hazır filtresinin karşılığı
+  const only = pure.applyTypeFilter(r.items, { movie: false, show: false, episode: true, unknown: false });
+  assert.deepEqual(only.items.map((i) => i.id), ['tt1190634']);
+  assert.equal(only.dropped.show, 1);
+  assert.equal(only.dropped.movie, 1);
+  assert.equal(pure.overlapWarning(pure.countByType(only.items)), null,
+    'yalnız bölüm kalınca gövde/bölüm çakışması uyarısı olmamalı');
+  assert.ok(pure.overlapWarning(pure.countByType(r.items)), 'süzülmemiş listede uyarı çıkmalı');
+});
+
+test('dışa aktarılan kuyruk CSV\'si (const başlığı) kayıpsız geri okunur', () => {
+  const exported = pure.toCsv([
+    ['const', 'type', 'label'],
+    ['tt1190634', 'episode', 'Mother! S03E01'],
+    ['tt1160419', 'movie', 'Dune']
+  ]);
+  const back = pure.extractIds(exported, { source: 'kuyruk.csv' });
+  assert.equal(back.format, 'csv');
+  assert.deepEqual(back.items.map((i) => i.id), ['tt1190634', 'tt1160419']);
+  assert.deepEqual(back.items.map((i) => i.type), ['episode', 'movie']);
+  assert.deepEqual(back.items.map((i) => i.label), ['Mother! S03E01', 'Dune']);
+});
+
 test('overlapWarning: gövde + bölüm varsa uyarı, tek tür varsa null', () => {
   const both = pure.overlapWarning({ show: 3, episode: 40, movie: 10, unknown: 0 });
   assert.ok(both && /dizi gövdesi/.test(both) && /40 bölüm/.test(both));

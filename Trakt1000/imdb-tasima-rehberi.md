@@ -79,6 +79,43 @@ tt0903747,"Breaking Bad"
 `mylistsaddon.com` (My Lists) Trakt liste bağlantılarını toplu yapıştırıp IMDb'ye uygun
 CSV/JSON olarak dışa aktarabiliyor. 18 listeyi tek tek elle uğraşmak istemezsen bunu dene.
 
+### Yöntem D — `watched-history-*.json`'dan yalnız bölümleri süzme
+
+Geçmiş dosyasında her kayıt **hem dizi gövdesini hem bölümü** taşır (`type: "episode"`
+kaydında `episode.ids.imdb` ve `show.ids.imdb` yan yana durur). Yöntem A'daki düz `tt`
+araması ikisini de getirir; yalnız bölümleri istiyorsan tür alanına bakman gerekir.
+
+```bash
+# jq (Linux / macOS / WSL) — sayfalanmış dosyaların hepsini birden
+jq -r '.[] | select(.type=="episode") | .episode.ids.imdb // empty' watched-history-*.json \
+  | sort -u > episodes.txt
+```
+
+```powershell
+# PowerShell (Windows) — aynı iş, kurulum gerektirmez
+$out = foreach ($f in Get-ChildItem watched-history-*.json) {
+  (Get-Content $f.FullName -Raw | ConvertFrom-Json) |
+    Where-Object { $_.type -eq 'episode' -and $_.episode.ids.imdb } |
+    ForEach-Object { $_.episode.ids.imdb }
+}
+$out | Sort-Object -Unique | Set-Content episodes.txt
+"$($out.Count) ham kayıt, $(($out | Sort-Object -Unique).Count) benzersiz bölüm"
+```
+
+İki not:
+
+- Bazı bölümlerde `imdb` alanı **`null`** gelir; yukarıdaki `// empty` ve
+  `-and $_.episode.ids.imdb` koşulları bunları düşürür. IMDb kimliği olmayan bölüm
+  hiçbir yolla IMDb'ye yazılamaz (bkz. §5).
+- Tekrar izlemeler geçmişte birden çok olay olarak durur → `sort -u` /
+  `Sort-Object -Unique` tekilleştirir. Ham kayıt ile benzersiz bölüm sayısının
+  farklı olması normaldir.
+
+Betikle çalışacaksan bunu elle yapmana gerek yok: `imdb-watched-marker/` panelindeki
+**"Yalnız bölümler"** hazır filtresi gövdeleri ve filmleri kuyruktan düşürür, sonra
+**"Kuyruk CSV"** ile aynı listeyi `const,type,label` başlıklı dosya olarak verir
+(bkz. `imdb-watched-marker/README.md` §2b).
+
 ---
 
 ## 2. IMDb'de hedef listeyi oluştur

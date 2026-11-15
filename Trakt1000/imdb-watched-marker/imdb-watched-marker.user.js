@@ -313,7 +313,7 @@
     if (!rows.length) return sink;
     var header = rows[0];
     var idCol = findColumn(header, ['const', 'imdb', 'imdbid', 'imdb_id', 'imdb id', 'tt']);
-    var titleCol = findColumn(header, ['title', 'baslik', 'başlık', 'name']);
+    var titleCol = findColumn(header, ['title', 'label', 'baslik', 'başlık', 'name']);
     var typeCol = findColumn(header, ['title type', 'titletype', 'type', 'tur', 'tür']);
     var seasonCol = findColumn(header, ['season', 'sezon', 'season number']);
     var episodeCol = findColumn(header, ['episode', 'bolum', 'bölüm', 'episode number']);
@@ -1100,7 +1100,10 @@
   }
 
   function exportRows(onlyFailures) {
-    var rows = [['id', 'type', 'label', 'status', 'error']];
+    // İlk kolon bilinçli olarak `const`: IMDb'nin kendi CSV başlığı ve betiğin
+    // tanıdığı kolon adı bu. Böylece dışa aktarılan dosya hem IMDb Ratings
+    // Importer'a hem de bu betiğe tekrar girdi olarak verilebilir.
+    var rows = [['const', 'type', 'label', 'status', 'error']];
     for (var i = 0; i < state.rows.length; i++) {
       var r = state.rows[i];
       if (onlyFailures && r.status !== 'fail') continue;
@@ -1325,6 +1328,7 @@
       // 2) Filtre
       body.appendChild(h('h4', null, '2 · Hangi türler işaretlensin'));
       var filters = h('div');
+      el.filterBoxes = {};
       [['movie', 'Filmler'], ['show', 'Diziler (gövde)'], ['episode', 'Bölümler'],
         ['unknown', 'Türü belirsiz'], ['season', 'Sezonlar (IMDb\'de yok)'], ['person', 'Kişiler (nm)']].forEach(function (pair) {
           var key = pair[0];
@@ -1332,11 +1336,40 @@
           var cb = h('input', { type: 'checkbox' });
           cb.checked = !!state.filters[key];
           cb.addEventListener('change', function () { state.filters[key] = cb.checked; rebuild(); });
+          el.filterBoxes[key] = cb;
           lab.appendChild(cb);
           lab.appendChild(h('span', null, pair[1]));
           filters.appendChild(lab);
         });
       body.appendChild(filters);
+
+      // Hazır filtre ayarları: watched-history.json hem film, hem dizi gövdesi, hem
+      // bölüm içerir; en sık istenen iki kombinasyon tek tıkla uygulanabilsin.
+      function applyPreset(preset, name) {
+        Object.keys(state.filters).forEach(function (key) {
+          var on = !!preset[key];
+          state.filters[key] = on;
+          if (el.filterBoxes[key]) el.filterBoxes[key].checked = on;
+        });
+        log('info', 'Hazır filtre uygulandı: ' + name);
+        rebuild();
+      }
+      var presets = h('div', { class: 'btns' });
+      var onlyEpisodes = h('button', { type: 'button', title: 'Yalnız bölüm tt\'leri (watched-history için)' }, 'Yalnız bölümler');
+      onlyEpisodes.addEventListener('click', function () {
+        applyPreset({ movie: false, show: false, episode: true, unknown: false, season: false, person: false }, 'yalnız bölümler');
+      });
+      var bodiesAndMovies = h('button', { type: 'button', title: 'Film + dizi gövdesi (bölüm yok)' }, 'Film + gövde');
+      bodiesAndMovies.addEventListener('click', function () {
+        applyPreset({ movie: true, show: true, episode: false, unknown: true, season: false, person: false }, 'film + dizi gövdesi');
+      });
+      presets.appendChild(onlyEpisodes);
+      presets.appendChild(bodiesAndMovies);
+      body.appendChild(presets);
+      body.appendChild(h('div', { class: 'note' },
+        'watched-history-*.json her kayıtta hem dizi gövdesini hem bölümü taşır; ' +
+        '"Yalnız bölümler" gövdeleri düşürür. "Türü belirsiz" kapalıyken türü ' +
+        'çıkarılamayan öğeler işaretlenmez — kuru koşuda "bilinmeyen" sayısı 0 mı kontrol et.'));
       body.appendChild(h('div', { class: 'note' },
         'Dizi gövdesini işaretlemek IMDb\'de "tüm diziyi izledim" anlamına gelmez ama rozet konur; ' +
         'yalnız bölüm bazında ilerlemek istiyorsan "Diziler (gövde)" kutusunu kapat.'));
@@ -1469,7 +1502,7 @@
       var expQueue = h('button', { type: 'button' }, 'Kuyruk CSV');
       expQueue.addEventListener('click', function () {
         if (!state.queue.length) { log('warn', 'Kuyruk boş.'); return; }
-        var rows = [['id', 'type', 'label']];
+        var rows = [['const', 'type', 'label']];
         state.queue.forEach(function (it) { rows.push([it.id, it.type, it.label]); });
         downloadFile('imdb-watched-kuyruk.csv', toCsv(rows), 'text/csv');
       });
