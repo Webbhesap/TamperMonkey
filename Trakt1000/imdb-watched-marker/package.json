@@ -1,0 +1,14 @@
+{
+  "name": "imdb-watched-marker-userscript",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Trakt yedegindeki tt kimliklerini IMDb Watched isaretine ceviren Tampermonkey/Violentmonkey betigi (puan ve check-in kullanmaz)",
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/",
+    "check": "node --check imdb-watched-marker.user.js"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
