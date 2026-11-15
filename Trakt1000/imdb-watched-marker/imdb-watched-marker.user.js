@@ -536,6 +536,17 @@
     return out;
   }
 
+  // IMDb'de dizi gövdesini işaretlemek bölümlerini işaretlemiş saymaz, tersi de
+  // doğru. İkisi birden kuyruktaysa aynı içerik iki kez işaretlenir; kullanıcı
+  // bilinçli seçsin diye uyarı metni üret (yoksa null).
+  function overlapWarning(counts) {
+    if (!counts || !(counts.show > 0) || !(counts.episode > 0)) return null;
+    return 'Kuyrukta hem ' + counts.show + ' dizi gövdesi hem ' + counts.episode + ' bölüm var. ' +
+      'IMDb\'de gövdeyi işaretlemek bölümleri, bölümleri işaretlemek gövdeyi kapsamaz; ' +
+      'ikisi birden işaretlenir. Yalnız bölüm bazında ilerlemek istiyorsan ' +
+      '"Diziler (gövde)" kutusunu kapat.';
+  }
+
   function toCsv(rows) {
     var out = [];
     for (var i = 0; i < rows.length; i++) {
@@ -1158,6 +1169,8 @@
     state.merged = mergeResults(state.results);
     var filtered = buildQueue();
     var counts = countByType(state.merged.items);
+    var overlap = overlapWarning(countByType(state.queue));
+    if (overlap) log('warn', overlap);
     log('info', 'Toplam benzersiz tt: ' + state.merged.items.length +
       ' (film ' + counts.movie + ', dizi ' + counts.show + ', bölüm ' + counts.episode +
       ', bilinmeyen ' + counts.unknown + ')' +
@@ -1664,6 +1677,7 @@
     mergeResults: mergeResults,
     applyTypeFilter: applyTypeFilter,
     countByType: countByType,
+    overlapWarning: overlapWarning,
     state: state,
     markOne: markWatchedOnce
   };

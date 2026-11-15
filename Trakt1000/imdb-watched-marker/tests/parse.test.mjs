@@ -20,7 +20,7 @@ const pureCode = source.slice(from + START.length, to);
 
 const pure = new Function(`${pureCode}
   return {
-    extractIds, mergeResults, applyTypeFilter, countByType, toCsv, parseCsv,
+    extractIds, mergeResults, applyTypeFilter, countByType, overlapWarning, toCsv, parseCsv,
     summarizeSkipped, formatEta, looksLikeAuthError, gqlErrorMessage, typeFromToken, pad2
   };`)();
 
@@ -155,6 +155,15 @@ test('countByType özet sayar', () => {
   assert.equal(c.movie, 2);
   assert.equal(c.episode, 1);
   assert.equal(c.unknown, 1);
+});
+
+test('overlapWarning: gövde + bölüm varsa uyarı, tek tür varsa null', () => {
+  const both = pure.overlapWarning({ show: 3, episode: 40, movie: 10, unknown: 0 });
+  assert.ok(both && /dizi gövdesi/.test(both) && /40 bölüm/.test(both));
+  assert.match(both, /Diziler \(gövde\)/);
+  assert.equal(pure.overlapWarning({ show: 3, episode: 0 }), null);
+  assert.equal(pure.overlapWarning({ show: 0, episode: 40 }), null);
+  assert.equal(pure.overlapWarning(null), null);
 });
 
 test('toCsv tırnak ve virgül kaçışlar', () => {
