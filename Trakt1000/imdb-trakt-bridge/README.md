@@ -71,6 +71,41 @@ Her çekimde atlananlar günlüğe yazılır: `imdb-yok` (Trakt'ta IMDb kimliği
 
 ## 4. Kullanım — IMDb tarafı (`www.imdb.com`)
 
+### 4.0 "0 · Depo (Trakt'tan gelen)" bölümü ne işe yarar?
+
+**Depo, iki sayfa arasındaki aktarma istasyonudur.** Trakt sekmesinde çektiğin satırlar
+burada birikir; IMDb tarafında yapılan her şey bu satırları okur. Yani Depo bölümü
+**yazma yeri değil, kontrol yeridir**: kaç satır geldi, hangi hedeflere/türlere dağıldı,
+doğru veri mi geldi?
+
+Depo bölümündeki düğmeler:
+
+| Düğme | Ne yapar |
+|---|---|
+| **Yenile** | Depoyu **GM deposundan yeniden okur** (Trakt sekmesinde yeni çekim yaptıysan burada görünür) ve satır sayısını/dağılımı tazeler |
+| **JSON indir** | Depoyu `{version, meta, rows}` olarak dosyaya yazar → GM deposu paylaşılmıyorsa eliyle taşıma, ya da yedek |
+| **CSV indir** | `const,type,target,label,rating,date,source,listId` başlıklı CSV → Excel/Sheets'te gözden geçirme |
+| **JSON/CSV yükle** | Dosyadan satır ekler: köprünün kendi JSON/CSV'si, Trakt ZIP'inin `*.json` dosyaları, IMDb CSV'leri, NDJSON, düz `tt…` metni |
+| **Depoyu temizle** | Satırları, meta'yı, sırayı ve ilerlemeyi siler (yeni bir çekime temiz başlamak için) |
+
+Altındaki iki satır bilgi: **özet** (`1240 satır · hedef → list: 412 · watched: 828 · tür → movie: 300 · show: 112 · episode: 828`) ve **meta** (çekim zamanı, Trakt kullanıcısı, çekim başına sayılar).
+
+**Veri buraya nasıl gelir?** İki yol:
+
+1. **GM deposu varsa (normal yol):** Trakt sekmesinde çek → IMDb sekmesine geç. Panel
+   her açılışta, sekme her odaklandığında ve **Yenile**'de depoyu tazelediği için
+   satırlar kendiliğinden görünür. Sayfayı yenilemen gerekmez.
+2. **GM deposu yoksa:** Trakt sekmesinde **JSON indir** → IMDb sekmesinde **JSON/CSV
+   yükle** → dosyayı seç. Özet satırında `(GM deposu yok: sayfalar arası taşıma JSON ile)`
+   uyarısını görüyorsan bu yolu kullan.
+
+**Sıra satırı (2. bölüm):** Depo tazelenince `Sıra: N öğe (list: 412 · watched: 828)`
+satırı da güncellenir; hedef/tür kutularını değiştirdiğinde anında değişir. Yazılamayacak
+satırlar gerekçesiyle listelenir: *puansız* (puan hedefi seçili ama satırda puan yok) veya
+*liste kimliği (ls…) yok* (liste hedefi seçili ama `ls…` girilmemiş ve mod "mevcut liste").
+
+### 4.1 Bölümler
+
 **0/1 · Durum**: IMDb oturumu açık mı (`imdb.com` ana sayfasındaki hesap düğmesi
 sınanır), GM deposu var mı, depoda kaç satır var.
 
@@ -106,6 +141,25 @@ başarısızlar CSV, günlük metni.
 **6 · Yakalama modu**: IMDb bir mutation adını değiştirirse, dinlemeyi aç → aynı işlemi
 IMDb arayüzünde bir kez elle yap → betik çağrıyı (`operationName`, `query`, `variables`)
 kaydeder; JSON olarak indirebilirsin. Bu, betikteki gövdeleri güncellemenin yoludur.
+
+### 4.2 İlk çalıştırma kontrol listesi
+
+1. `app.trakt.tv` → panel → **Token'ı oku** (yeşil ✓ olmalı) → **Kapasiteyi göster**.
+2. **Listeleri getir** → taşınacak listeleri işaretle → **Seçilen listeleri çek → depoya**.
+   Gerekirse watchlist/izlenen/puan düğmeleri.
+3. `www.imdb.com` → panel → **0 · Depo**'da satır sayısını gör (gelmediyse **Yenile**;
+   yine yoksa Trakt sekmesinde **JSON indir** → burada **JSON/CSV yükle**).
+4. **1 · Durum**: `✓ IMDb oturumu açık` mı? Kırmızıysa önce giriş yap.
+5. **2 · Hedefler**: hangi hedeflere yazacaksan işaretle; türlerde **sezon** ve **kişi**
+   kapalı kalsın (IMDb kabul etmez). **Sırayı önizle** → uyarıları oku.
+6. **3 · Liste hedefi**: mevcut `ls…` gir (bir liste sayfasındayken **Bu sayfadaki ls
+   kimliğini al**) ya da "tek yeni liste" / "Trakt listesi başına yeni liste" seç.
+7. **4 · Çalıştır**: kuru çalıştırma **açıkken** Başlat → günlüğü oku (hiçbir şey yazmaz).
+   Sonra **tek deneme**: bir `tt…` + hedef seç, kuru çalıştırmayı kapat, **Dene**.
+   Başarılıysa kuru çalıştırmayı kapalı bırakıp **Başlat**.
+8. İş bitince **5 · Dışa aktar** → *Kuyruk CSV* (her satırın `status`/`message` alanı) ve
+   gerekiyorsa *Başarısızlar CSV*. Başarısızları düzeltip aynı CSV'yi **JSON/CSV yükle**
+   ile geri yükleyip yeniden çalıştırabilirsin.
 
 ## 5. Yazma uçları ve doğrulama kaynakları
 

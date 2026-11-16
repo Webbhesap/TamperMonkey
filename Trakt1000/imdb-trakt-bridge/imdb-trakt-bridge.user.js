@@ -1298,6 +1298,8 @@
       const want = show === undefined ? panel.classList.contains('hide') : show;
       panel.classList.toggle('hide', !want);
       fab.style.display = want ? 'none' : '';
+      // Panel her açıldışta depoyu tazele: veri başka sekmeden gelmiş olabilir.
+      if (want && typeof refs.onOpen === 'function') refs.onOpen();
     }
 
     refs.toggle = toggle;
@@ -1312,7 +1314,17 @@
     const box = h('fieldset', {}, [h('legend', { text: 'Depo' })]);
     const summary = h('div', { class: 'muted' });
 
-    function refresh() {
+    function refresh(opts = {}) {
+      // Depoyu yeniden oku: veri başka bir sekmeden (app.trakt.tv) gelmiş olabilir.
+      const stored = store.get('rows', null);
+      if (Array.isArray(stored) && stored.length) {
+        if (state.rows.length !== stored.length && opts.log) {
+          opts.log(`Depo yenilendi: ${stored.length} satır (önceki ${state.rows.length}).`);
+        }
+        state.rows = stored;
+      }
+      const storedMeta = store.get('meta', null);
+      if (storedMeta) state.meta = storedMeta;
       const rows = state.rows || [];
       const byTarget = countByTarget(rows);
       const byType = countByType(rows);
@@ -1320,7 +1332,7 @@
       const types = Object.entries(byType).map(([k, v]) => `${k}: ${v}`).join(' · ') || '—';
       summary.textContent = `${rows.length} satır · hedef → ${targets} · tür → ${types}` +
         (store.shared ? '' : ' · (GM deposu yok: sayfalar arası taşıma JSON ile)');
-      if (refs.metaLine && state.meta) refs.metaLine.textContent = describeMeta(state.meta);
+      if (refs.metaLine) refs.metaLine.textContent = state.meta ? describeMeta(state.meta) : '';
     }
 
     function download(name, text, mime = 'text/plain') {
@@ -1348,7 +1360,7 @@
 
     box.appendChild(summary);
     box.appendChild(h('div', { class: 'row' }, [
-      h('button', { class: 'sec', text: 'Yenile', onClick: refresh }),
+      h('button', { class: 'sec', text: 'Yenile', onClick: () => refresh({ log: true }) }),
       h('button', { class: 'sec', text: 'JSON indir', onClick: () => download(`trakt-bridge-${Date.now()}.json`, JSON.stringify({ version: VERSION, meta: state.meta, rows: state.rows }, null, 1), 'application/json') }),
       h('button', { class: 'sec', text: 'CSV indir', onClick: () => download(`trakt-bridge-${Date.now()}.csv`, toCsv(state.rows), 'text/csv') }),
       h('button', { class: 'sec', text: 'JSON/CSV yükle', onClick: () => fileInput.click() }),
@@ -1629,6 +1641,7 @@
     const oneConst = h('input', { type: 'text', placeholder: 'tt1234567', style: { width: '120px' } });
     const oneTarget = h('select', {}, TARGETS.map((t) => h('option', { value: t, text: t })));
     const captureBox = h('pre', { class: 'log', style: { height: '90px' }, text: '(yakalama kapalı)' });
+    const queueLine = h('div', { class: 'muted', text: 'Sıra: —' });
 
     const targetBoxes = {};
     const typeBoxes = {};
@@ -1644,6 +1657,40 @@
       const mode = refs.body.querySelector('input[name=listmode]:checked');
       if (mode) state.cfg.listMode = mode.value;
       saveCfg();
+    }
+
+    // Kutu seçimlerine göre sıra özeti (ayarı kaydetmeden, günlük basmadan).
+    // buildQueue ile aynı kuralları uygular ki iki sayı birbirini tutsun.
+    function queueSummaryText() {
+      const tg = {};
+      TARGETS.forEach((t) => { tg[t] = targetBoxes[t] && targetBoxes[t].checked; });
+      const ty = {};
+      Object.keys(typeBoxes).forEach((t) => { ty[t] = typeBoxes[t].checked; });
+      const rows = applyTypeFilter(applyTargetFilter(state.rows || [], tg), ty);
+      const modeEl = refs.body.querySelector('input[name=listmode]:checked');
+      const mode = modeEl ? modeEl.value : state.cfg.listMode;
+      const listReady = Boolean(parseImdbListId(listIdInput.value)) || mode !== 'existing';
+      let noRating = 0;
+      let noList = 0;
+      const usable = rows.filter((r) => {
+        if (r.target === 'rating') {
+          if (Number.isFinite(r.rating) && r.rating > 0) return true;
+          noRating += 1;
+          return false;
+        }
+        if (r.target === 'list') {
+          if (listReady) return true;
+          noList += 1;
+          return false;
+        }
+        return true;
+      });
+      const byTarget = countByTarget(usable);
+      const parts = Object.entries(byTarget).map(([k, v]) => `${k}: ${v}`).join(' · ') || '—';
+      const notes = [];
+      if (noRating) notes.push(`${noRating} satır puansız`);
+      if (noList) notes.push(`${noList} satır için liste kimliği (ls…) yok`);
+      return `Sıra: ${usable.length} öğe (${parts})` + (notes.length ? ` · yazılamayacak: ${notes.join(', ')}` : '');
     }
 
     function queuePreview() {
@@ -1699,6 +1746,7 @@
         h('label', {}, [typeBoxes.person, 'kişi (nm, yazılamaz)']),
       ]),
       h('div', { class: 'row' }, [h('button', { class: 'sec', text: 'Sırayı önizle', onClick: queuePreview })]),
+      queueLine,
       h('div', { class: 'muted', text: 'Puan hedefi: IMDb\'de puan vermek öğeyi otomatik "izlendi" yapar, tarih ise bugünün tarihi olur (IMDb geriye tarih yazdırmaz).' }),
     ]));
 
@@ -1795,6 +1843,20 @@
     box.insertBefore(box.lastChild, box.firstChild);
     refs.body.appendChild(box);
 
+    // Depo her tazelendiğinde (Yenile, sekme değişimi, dosya yükleme) sıra
+    // sayısını da güncelle; böylece Trakt sekmesinden gelen veri burada görünür.
+    const baseRefreshStore = refs.refreshStore;
+    refs.refreshStore = (opts) => {
+      baseRefreshStore(opts);
+      queueLine.textContent = queueSummaryText();
+    };
+    TARGETS.forEach((t) => targetBoxes[t].addEventListener('change', () => { queueLine.textContent = queueSummaryText(); }));
+    Object.keys(typeBoxes).forEach((t) => typeBoxes[t].addEventListener('change', () => { queueLine.textContent = queueSummaryText(); }));
+    listIdInput.addEventListener('input', () => { queueLine.textContent = queueSummaryText(); });
+    Array.prototype.forEach.call(refs.body.querySelectorAll('input[name=listmode]'), (r) => {
+      r.addEventListener('change', () => { queueLine.textContent = queueSummaryText(); });
+    });
+
     imdb.whoami().then((r) => {
       sess.textContent = r.loggedIn ? '✓ IMDb oturumu açık.' : `✗ IMDb oturumu kapalı görünüyor (HTTP ${r.status}).`;
       sess.className = r.loggedIn ? 'ok' : 'bad';
@@ -1834,6 +1896,14 @@
     if (IS_TRAKT) buildTraktSide(refs);
     else buildImdbSide(refs);
     refs.body.appendChild(footer);
+
+    // Sekmeye geri dönünce depoyu tazele: Trakt sekmesinde çekilen satırlar
+    // IMDb sekmesinde kendiliğinden görünsün diye.
+    refs.onOpen = () => { if (refs.refreshStore) refs.refreshStore(); };
+    window.addEventListener('focus', () => { if (refs.refreshStore) refs.refreshStore(); });
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden && refs.refreshStore) refs.refreshStore();
+    });
 
     const prev = store.get('progress', null);
     if (prev) refs.log(`Önceki çalıştırma: ${new Date(prev.at).toLocaleString('tr-TR')} · ${prev.done} başarılı / ${prev.failed} hata / ${prev.skipped} atlanan (kuru: ${prev.dryRun ? 'evet' : 'hayır'})`);
