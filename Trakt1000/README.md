@@ -21,7 +21,8 @@ Bu klasör ana depodaki `image-scraper` projesinden bağımsızdır.
 | `imdb-tasima-rehberi.md` | Ana rehber (§0 yedek, §1 `tt` çıkarma, §2–4 IMDb listesi kurma/doğrulama, §5 taşınamayanlar + antoloji tuzağı, §5b Watched, §5c 12.000 üstü geçmiş, §6 karşılaştırma, §7 Trakt'ta kalma) |
 | `imdb-watched-marker/imdb-watched-marker.user.js` | Tek dosyalık userscript: `addWatchedTitle` ile toplu Watched |
 | `imdb-watched-marker/README.md` | Kurulum, kullanım, yakalama modu, sorun giderme, risk notları |
-| `imdb-watched-marker/tests/parse.test.mjs` | 19 test (`node --test`) — ayrıştırıcı, filtreler, CSV/hata yardımcıları |
+| `imdb-watched-marker/tests/parse.test.mjs` | 22 test (`node --test`) — ayrıştırıcı, filtreler, hazır filtre ön ayarları, CSV/hata yardımcıları |
+| `imdb-userscript-onerileri.md` | Greasy Fork taraması (16 Kasım 2026): işe yarayan IMDb betikleri, tamamlayıcılar, tuzaklar ve minimum set |
 
 ## Bulgular (doğrulanmış)
 
