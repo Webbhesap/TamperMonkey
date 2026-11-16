@@ -27,7 +27,8 @@ const pure = new Function(`${pureCode}
     rowKey, mergeRows, applyTargetFilter, applyTypeFilter, countByType, countByTarget,
     overlapWarning, groupBySource, capWarnings, sanitizeListName, parseImdbListId,
     imdbGraphqlBody, createListVariables, addItemVariables, rateVariables, watchedVariables,
-    imdbGraphqlHeaders, watchlistUrl, gqlErrorMessage, looksLikeAuthError, looksLikeDuplicate,
+    imdbGraphqlHeaders, watchlistUrl, writeOriginWarning, IMDB_HOST,
+    gqlErrorMessage, looksLikeAuthError, looksLikeDuplicate,
     classifyHttpStatus, backoffFor, formatEta,
     toCsv, parseCsv, rowsFromCsv, rowsFromText, CSV_COLS
   };`)();
@@ -426,4 +427,27 @@ test('parseCsv: tırnak içinde virgül ve satır sonu', () => {
   assert.equal(rows.length, 1);
   assert.equal(rows[0].a, 'x,y');
   assert.equal(rows[0].b, 'satır1\nsatır2');
+});
+
+test('writeOriginWarning: www.imdb.com dışındaki origin\'lerde uyarı verir', () => {
+  assert.equal(pure.writeOriginWarning('https://www.imdb.com/list/ls596645010/edit'), null);
+  assert.equal(pure.writeOriginWarning('https://www.imdb.com/title/tt0111161/'), null);
+  assert.equal(pure.IMDB_HOST, 'https://www.imdb.com');
+
+  const m = pure.writeOriginWarning('https://m.imdb.com/title/tt0111161/');
+  assert.match(m, /https:\/\/m\.imdb\.com/);
+  assert.match(m, /CORS/);
+  assert.match(m, /www\.imdb\.com olarak aç/);
+
+  assert.match(pure.writeOriginWarning('https://www.imdb.de/title/tt0111161/'), /origin/);
+  assert.match(pure.writeOriginWarning('http://www.imdb.com/'), /origin/);
+});
+
+test('writeOriginWarning: bozuk/boş adres patlamaz (tabana çözümlenir)', () => {
+  // '' ve ':::' göreli adres olarak www.imdb.com tabanına çözümlenir → uyarı yok.
+  assert.equal(pure.writeOriginWarning(''), null);
+  assert.equal(pure.writeOriginWarning('::::'), null);
+  // Geçersiz bir değer de istisna fırlatmamalı: ya null ya açıklama döner.
+  const r = pure.writeOriginWarning(undefined);
+  assert.ok(r === null || typeof r === 'string');
 });

@@ -1,11 +1,12 @@
 // ==UserScript==
 // @name         IMDb ↔ Trakt Köprüsü (canlı)
 // @namespace    https://github.com/Webbhesap/TamperMonkey
-// @version      0.1.0
+// @version      0.1.1
 // @description  Trakt'tan canlı okur (kendi oturumun, bağlı uygulama slotu harcamaz) ve IMDb'ye yazar: liste, watchlist, izlendi, puan. İki sayfalı: app.trakt.tv'de çek, imdb.com'da bas.
 // @author       Webbhesap
 // @match        https://app.trakt.tv/*
-// @match        https://www.imdb.com/*
+// @match        https://trakt.tv/*
+// @match        https://*.imdb.com/*
 // @run-at       document-idle
 // @grant        GM_setValue
 // @grant        GM_getValue
@@ -48,7 +49,7 @@
 
   /* __PURE_START__ */
 
-  const VERSION = '0.1.0';
+  const VERSION = '0.1.1';
   const STORE_PREFIX = 'imdbTraktBridge.v1.';
   const TRAKT_OIDC_PREFIX = 'oidc.user:https://auth.trakt.tv:';
   const TRAKT_HOSTS = ['https://api.trakt.tv', 'https://apiz.trakt.tv'];
@@ -455,6 +456,21 @@
   // Watchlist GraphQL değil, düz REST: PUT https://www.imdb.com/watchlist/tt...
   function watchlistUrl(constId, host = IMDB_HOST) {
     return `${String(host).replace(/\/$/, '')}/watchlist/${constId}`;
+  }
+
+  // IMDb'nin iç GraphQL ucu kimlik bilgili CORS isteklerini yalnızca
+  // https://www.imdb.com origin'inden kabul ediyor (alt alan adlarından değil).
+  function writeOriginWarning(href) {
+    let origin = '';
+    try {
+      origin = new URL(String(href || ''), IMDB_HOST).origin;
+    } catch (err) {
+      return 'Adres okunamadı: yazma işlemlerini www.imdb.com sekmesinden yap.';
+    }
+    if (origin === IMDB_HOST) return null;
+    return `Bu sekme ${origin} origin'inde. IMDb'nin iç GraphQL ucu kimlik bilgili istekleri ` +
+      `yalnızca ${IMDB_HOST} origin'inden kabul ediyor; yazma işlemleri burada CORS ` +
+      'nedeniyle reddedilebilir. Adresi www.imdb.com olarak aç.';
   }
 
   function gqlErrorMessage(json) {
@@ -969,6 +985,9 @@
     removeDuplicatesOnly: false,
   };
 
+  // Panel referansları (dışa açılan togglePanel/openPanel için boot() doldurur).
+  let refsHolder = {};
+
   const state = {
     cfg: Object.assign({}, DEFAULTS, store.get('cfg', {})),
     rows: store.get('rows', []) || [],
@@ -1226,14 +1245,26 @@
   }
 
   const CSS = `
-    :host { all: initial; }
-    .wrap { position: fixed; z-index: 2147483647; font: 13px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
-    .fab { right: 16px; bottom: 16px; width: 46px; height: 46px; border-radius: 50%;
-           background: #f5c518; color: #111; border: 0; cursor: pointer; font-size: 20px;
-           box-shadow: 0 4px 14px rgba(0,0,0,.35); }
-    .panel { right: 16px; bottom: 16px; width: 460px; max-width: calc(100vw - 24px);
+    /* Host'u sayfa CSS'inden yalıtmak için gerekenler açıkça yazılır: "all: initial"
+       tek başına position/z-index'i de sıfırladığı için kullanılmıyor. */
+    :host {
+      position: fixed; right: 0; bottom: 0; width: 0; height: 0; z-index: 2147483647;
+      font: 13px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+      color: #111; text-align: left; direction: ltr;
+    }
+    /* İkon ve panel host'a BAĞIMLI OLMADAN kendi konumlarını taşır: eski sürümde
+       right/bottom vardı ama position yoktu, bu yüzden body'nin en altına akıyorlardı. */
+    .fab { position: fixed; right: 16px; bottom: 16px; z-index: 2147483647;
+           display: block; box-sizing: border-box; width: 46px; height: 46px; padding: 0;
+           border-radius: 50%; background: #f5c518; color: #111; border: 0; cursor: pointer;
+           font-size: 20px; line-height: 46px; text-align: center; pointer-events: auto;
+           box-shadow: 0 4px 14px rgba(0,0,0,.45); }
+    .fab:hover { background: #ffd83d; }
+    .panel { position: fixed; right: 16px; bottom: 16px; z-index: 2147483647;
+             display: block; box-sizing: border-box; width: 460px; max-width: calc(100vw - 24px);
              max-height: calc(100vh - 32px); overflow: auto; background: #fff; color: #111;
-             border: 1px solid #d0d0d0; border-radius: 12px; box-shadow: 0 10px 40px rgba(0,0,0,.3); }
+             pointer-events: auto;
+             border: 1px solid #d0d0d0; border-radius: 12px; box-shadow: 0 10px 40px rgba(0,0,0,.45); }
     .hd { position: sticky; top: 0; background: #f5c518; padding: 10px 12px; font-weight: 700;
           display: flex; justify-content: space-between; align-items: center; gap: 8px; }
     .bd { padding: 10px 12px 14px; }
@@ -1263,7 +1294,11 @@
 
   function buildPanel() {
     const host = document.createElement('div');
-    host.className = 'wrap';
+    host.className = 'imdb-trakt-bridge-root';
+    // Satır içi stil: gölge CSS'i bir şekilde uygulanmazsa bile ikon/panel görünsün.
+    host.setAttribute('style', 'position:fixed !important;right:0 !important;bottom:0 !important;' +
+      'width:0 !important;height:0 !important;z-index:2147483647 !important;' +
+      'overflow:visible !important;pointer-events:none !important;background:none !important;');
     const shadow = host.attachShadow({ mode: 'open' });
     shadow.appendChild(h('style', { text: CSS }));
 
@@ -1873,6 +1908,7 @@
     if (!IS_TRAKT && !IS_IMDB) return;
     if (!document.body) { setTimeout(boot, 300); return; }
     const refs = buildPanel();
+    refsHolder = refs;
     document.body.appendChild(refs.host);
 
     const footer = h('fieldset', {}, [
@@ -1897,6 +1933,21 @@
     else buildImdbSide(refs);
     refs.body.appendChild(footer);
 
+    // Panel DOM'dan düşerse (SPA yeniden çizimi, body temizliği) geri ekle.
+    const ensureMounted = () => {
+      if (document.body && !refs.host.isConnected) {
+        document.body.appendChild(refs.host);
+        refs.log('Panel DOM\'dan düşmüştü, yeniden eklendi.');
+      }
+    };
+    setInterval(ensureMounted, 3000);
+    if (typeof MutationObserver === 'function') {
+      try {
+        const mo = new MutationObserver(ensureMounted);
+        mo.observe(document.body, { childList: true });
+      } catch (err) { /* interval zaten yedekliyor */ }
+    }
+
     // Sekmeye geri dönünce depoyu tazele: Trakt sekmesinde çekilen satırlar
     // IMDb sekmesinde kendiliğinden görünsün diye.
     refs.onOpen = () => { if (refs.refreshStore) refs.refreshStore(); };
@@ -1904,6 +1955,12 @@
     document.addEventListener('visibilitychange', () => {
       if (!document.hidden && refs.refreshStore) refs.refreshStore();
     });
+
+    if (IS_IMDB) {
+      const w = writeOriginWarning(location.href);
+      if (w) refs.log(w);
+    }
+    // İkon görünmüyorsa konsoldan açmak için: ImdbTraktBridge.openPanel()
 
     const prev = store.get('progress', null);
     if (prev) refs.log(`Önceki çalıştırma: ${new Date(prev.at).toLocaleString('tr-TR')} · ${prev.done} başarılı / ${prev.failed} hata / ${prev.skipped} atlanan (kuru: ${prev.dryRun ? 'evet' : 'hayır'})`);
@@ -1920,10 +1977,12 @@
     rowKey, mergeRows, applyTargetFilter, applyTypeFilter, countByType, countByTarget,
     overlapWarning, groupBySource, capWarnings, sanitizeListName, parseImdbListId,
     imdbGraphqlBody, createListVariables, addItemVariables, rateVariables, watchedVariables,
-    imdbGraphqlHeaders, watchlistUrl, gqlErrorMessage, looksLikeAuthError, looksLikeDuplicate,
-    classifyHttpStatus, backoffFor, formatEta, pad2, isTtId, isNmId, typeFromToken,
+    imdbGraphqlHeaders, watchlistUrl, writeOriginWarning, gqlErrorMessage, looksLikeAuthError,
+    looksLikeDuplicate, classifyHttpStatus, backoffFor, formatEta, pad2, isTtId, isNmId, typeFromToken,
     toCsv, parseCsv, rowsFromCsv, rowsFromText, loadAnyText, buildQueue, TARGETS, TYPES,
-    IMDB_LIST_CAP, IMDB_GRAPHQL, TRAKT_OIDC_PREFIX,
+    IMDB_LIST_CAP, IMDB_GRAPHQL, IMDB_HOST, TRAKT_OIDC_PREFIX,
+    togglePanel: (show) => (refsHolder.toggle ? refsHolder.toggle(show) : false),
+    openPanel: () => (refsHolder.toggle ? refsHolder.toggle(true) : false),
   };
   if (typeof window !== 'undefined') window.ImdbTraktBridge = api;
   if (typeof globalThis !== 'undefined') globalThis.ImdbTraktBridge = api;

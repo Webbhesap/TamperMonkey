@@ -7,10 +7,10 @@ sürümüdür: hedef tek değil, **dört** tanedir.
 | | |
 |---|---|
 | Dosya | `imdb-trakt-bridge.user.js` (tek dosya, bağımlılık yok, ~1.865 satır) |
-| Sürüm | 0.1.0 |
+| Sürüm | 0.1.1 |
 | Çalıştığı yerler | `https://app.trakt.tv/*` **ve** `https://www.imdb.com/*` |
 | Gereken izinler | `GM_setValue/GM_getValue/GM_deleteValue`, `GM_xmlhttpRequest`, `unsafeWindow` |
-| Test | `npm test` → **36/36 geçiyor** · `npm run check` → sözdizimi tamam |
+| Test | `npm test` → **38/38 geçiyor** · `npm run check` → sözdizimi tamam |
 | Lisans | MIT |
 
 > **Doğrulama durumu:** uç noktalar ve mutation gövdeleri kaynak koddan okunarak
@@ -229,15 +229,73 @@ birinde aç (ikisi de `fetch`/XHR'ı sarar).
 ```bash
 cd Trakt1000/imdb-trakt-bridge
 npm run check     # node --check
-npm test          # node --test tests/bridge.test.mjs  → 36 test
+npm test          # node --test tests/bridge.test.mjs  → 38 test
 ```
 
 Testler betiğin `/* __PURE_START__ */ … /* __PURE_END__ */` arasındaki saf çekirdeğini
 (DOM ve ağ kullanmayan bölüm) Node'da çalıştırır: token çıkarma, Trakt yolları, kapasite
 özeti, Trakt kaydı → satır dönüşümü (film/dizi/bölüm/`imdb:null`/`nm`), birleştirme ve
 tekilleştirme, hedef/tür filtreleri, gövde-bölüm çakışması ve 12.000 uyarıları, dört
-GraphQL gövdesi, watchlist REST adresi, hata sınıflandırma, bekleme kademeleri, CSV
-gidiş-dönüşü.
+GraphQL gövdesi, watchlist REST adresi, yazma origin'i uyarısı (`writeOriginWarning`),
+hata sınıflandırma, bekleme kademeleri, CSV gidiş-dönüşü.
 
 Saf çekirdeğe dokunursan testleri de güncelle; arayüz/ağ kodu değişse bile testler
 çalışmaya devam eder.
+
+## 10. Sorun giderme
+
+### İkonu ya da paneli göremiyorum
+
+**v0.1.0'da gerçek bir hata vardı:** gölge CSS'inde `.fab` ve `.panel` için `right/bottom`
+yazılmış ama `position` yazılmamıştı; ayrıca `.wrap { position: fixed }` kuralı gölge ağaç
+içinden **host öğesini eşleştirmiyordu** (bunun için `:host` gerekir). Sonuçta ikon ve panel
+`position: static` olarak `<body>`'nin en sonuna, sayfa altbilgisinin altına akıyordu —
+ekranın köşesinde görünmüyordu. **v0.1.1'de düzeltildi:**
+
+- `:host` artık açıkça `position: fixed; right: 0; bottom: 0; z-index: 2147483647`
+  (`all: initial` kullanılmıyor; o kural position/z-index'i de sıfırlıyordu).
+- `.fab` ve `.panel` **host'a bağımsız** olarak kendi `position: fixed; right: 16px;
+  bottom: 16px; z-index: 2147483647` değerlerini taşıyor.
+- Host'a ayrıca JS'ten satır içi stil veriliyor (`position/right/bottom/z-index
+  !important`), yani gölge CSS'i bir nedenle uygulanmasa bile köşe sabit kalıyor.
+- Host `pointer-events: none`, ikon ve panel `pointer-events: auto` → görünmez bir katman
+  sayfanın tıklanmasını engellemez.
+- Panel DOM'dan düşerse (SPA yeniden çizimi) `MutationObserver` + 3 sn'lik denetim onu
+  geri ekliyor.
+
+Hâlâ görmüyorsan sırayla bak:
+
+1. **Sürüm:** Tampermonkey listesinde `0.1.1` yazıyor mu? Eski sürüm kaldıysa güncelle.
+2. **Alan adı:** Betik `https://*.imdb.com/*` ve `https://app.trakt.tv/*` / `https://trakt.tv/*`
+   üzerinde çalışır. `imdb.de` gibi bir yerel alan adındaysan çalışmaz — `www.imdb.com`'a geç.
+3. **Konsoldan aç:** `ImdbTraktBridge.openPanel()` (veya `ImdbTraktBridge.togglePanel(true)`).
+   Panel açılıyorsa sorun yalnızca ikonun görünürlüğündedir; açılmıyorsa betik hiç
+   çalışmıyordur (madde 1–2 ve Tampermonkey'nin etkin olup olmadığına bak).
+4. **Çakışma:** Aynı sayfada arayüze dokunan başka bir betik (IMDb Scout Mod 1,21 MB'lık
+   CSS enjekte eder) köşeyi kapatıyor olabilir; diğer betikleri geçici kapatıp dene.
+5. **İzinler:** `GM_setValue`/`GM_xmlhttpRequest` reddedildiyse betik yine de paneli çizer;
+   ama Tampermonkey "Bu betik etkin mi?" ve sayfa için izin verildi mi kontrol et.
+
+### Yazma istekleri CORS/403 ile reddediliyor
+
+IMDb'nin iç GraphQL ucu kimlik bilgili istekleri **yalnızca `https://www.imdb.com`
+origin'inden** kabul ediyor. `m.imdb.com` ya da bir yerel alan adındaysan panel bunu
+açılışta günlüğe yazar (`writeOriginWarning`). Çözüm: sekmeyi `www.imdb.com` olarak aç.
+
+### Token bulunamadı
+
+`app.trakt.tv`'de oturum açık olmalı ve sayfa en az bir kez yüklenmiş olmalı (token
+`localStorage`'a yazılıyor). Sayfayı yenile, olmadıysa Trakt'tan çık/gir yap. Token
+süresi dolmuşsa panel "DOLMUŞ" uyarısı verir — yenileme yine oturumla olur.
+
+### Sıra 0 öğe gösteriyor
+
+Depo dolu ama sıra boşsa: **2 · Hedefler**'de hiçbir hedef kutusu işaretli değildir, ya
+da tür filtreleri kapalıdır (sezon/kişi varsayılan kapalı), ya da puan hedefi seçili
+olduğu hâlde satırlarda puan yoktur. Sıra satırı yazılamayanları gerekçesiyle sayar.
+
+### Depo, Trakt sekmesinde çektiğim satırları göstermiyor
+
+**Yenile**'e bas (depo artık her Yenile'de, panel açılışında ve sekme odaklandığında
+yeniden okunuyor). GM deposu paylaşılmıyorsa özet satırında uyarı görürsün: Trakt
+sekmesinde **JSON indir** → IMDb sekmesinde **JSON/CSV yükle**.
