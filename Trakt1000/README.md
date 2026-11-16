@@ -26,7 +26,7 @@ Bu klasör ana depodaki `image-scraper` projesinden bağımsızdır.
 | `imdb-userscript-onerileri.md` | Greasy Fork taraması (16 Kasım 2026): işe yarayan IMDb betikleri, tamamlayıcılar, tuzaklar ve minimum set |
 | `imdb-trakt-bridge/imdb-trakt-bridge.user.js` | İki sayfalı userscript (v0.1.1): `app.trakt.tv`'de canlı okuma + `imdb.com`'da dört hedefe yazma; panel sağ alt köşeye sabitlenir |
 | `imdb-trakt-bridge/README.md` | Akış şeması, uç tablosu, doğrulama kaynakları, sınırlar, marker ile karşılaştırma |
-| `imdb-trakt-bridge/tests/bridge.test.mjs` | 38 test (`node --test`) — token çıkarma, Trakt yolları/kapasite, kayıt→satır dönüşümü, GraphQL gövdeleri, yazma origin'i uyarısı, CSV |
+| `imdb-trakt-bridge/tests/bridge.test.mjs` | 48 test (`node --test`) — token çıkarma, Trakt yolları/kapasite, kayıt→satır dönüşümü, GraphQL gövdeleri, yazma origin'i uyarısı, CSV |
 
 ## Bulgular (doğrulanmış)
 

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         IMDb ↔ Trakt Köprüsü (canlı)
 // @namespace    https://github.com/Webbhesap/TamperMonkey
-// @version      0.1.1
+// @version      0.1.2
 // @description  Trakt'tan canlı okur (kendi oturumun, bağlı uygulama slotu harcamaz) ve IMDb'ye yazar: liste, watchlist, izlendi, puan. İki sayfalı: app.trakt.tv'de çek, imdb.com'da bas.
 // @author       Webbhesap
 // @match        https://app.trakt.tv/*
@@ -49,7 +49,7 @@
 
   /* __PURE_START__ */
 
-  const VERSION = '0.1.1';
+  const VERSION = '0.1.2';
   const STORE_PREFIX = 'imdbTraktBridge.v1.';
   const TRAKT_OIDC_PREFIX = 'oidc.user:https://auth.trakt.tv:';
   const TRAKT_HOSTS = ['https://api.trakt.tv', 'https://apiz.trakt.tv'];
@@ -391,6 +391,121 @@
   function parseImdbListId(text) {
     const m = String(text || '').match(/ls\d{6,12}/);
     return m ? m[0] : null;
+  }
+
+  // Sayım nesnesini okunur metne çevirir: {show: 7} → "show: 7"
+  function fmtCounts(counts) {
+    const entries = Object.entries(counts || {});
+    if (!entries.length) return 'yok';
+    return entries.map(([k, v]) => `${k}: ${v}`).join(', ');
+  }
+
+  // Sıfır öğelik sırada "neden?" sorusunu cevaplayan teşhis.
+  // Depodaki satırları hedef → tür → yazılabilirlik süzgeçlerinden geçirir ve her
+  // aşamada kaç satırın, hangi gerekçeyle elendiğini döndürür.
+  function queueDiagnostics(rows, opts = {}) {
+    const all = Array.isArray(rows) ? rows : [];
+    const tg = opts.targets || {};
+    const ty = opts.types || {};
+    const onTargets = Object.keys(tg).filter((k) => tg[k]);
+    const onTypes = Object.keys(ty).filter((k) => ty[k]);
+    const onTargetSet = new Set(onTargets);
+    const onTypeSet = new Set(onTypes);
+    const listMode = opts.listMode || 'existing';
+    const rawListId = typeof opts.listId === 'string' ? opts.listId.trim() : '';
+    const listId = parseImdbListId(rawListId);
+    const listReady = Boolean(listId) || listMode !== 'existing';
+
+    const typesInStore = countByType(all);
+    const targetsInStore = countByTarget(all);
+
+    const afterTarget = all.filter((r) => onTargetSet.has(r.target));
+    const afterType = afterTarget.filter((r) => onTypeSet.has(r.type));
+    const droppedByTarget = all.length - afterTarget.length;
+    const droppedByType = afterTarget.length - afterType.length;
+
+    let droppedNoRating = 0;
+    let droppedNoList = 0;
+    const usable = afterType.filter((r) => {
+      if (r.target === 'rating') {
+        if (Number.isFinite(r.rating) && r.rating > 0) return true;
+        droppedNoRating += 1;
+        return false;
+      }
+      if (r.target === 'list') {
+        if (listReady) return true;
+        droppedNoList += 1;
+        return false;
+      }
+      return true;
+    });
+
+    const emptyTargets = onTargets.filter((t) => !targetsInStore[t]);
+    const droppedTypes = Object.keys(typesInStore).filter((t) => !onTypeSet.has(t));
+
+    const reasons = [];
+    if (!all.length) {
+      reasons.push('Depoda hiç satır yok: app.trakt.tv sekmesinden çek ya da "JSON/CSV yükle" ile dosya ver.');
+    }
+    if (all.length && !onTargets.length) {
+      reasons.push('Hiçbir hedef kutusu işaretli değil (liste / watchlist / izlendi / puan).');
+    } else if (all.length && droppedByTarget === all.length) {
+      reasons.push(`Hedef kutuları depoyla örtüşmüyor. Depodaki hedefler → ${fmtCounts(targetsInStore)} · senin seçtiklerin → ${onTargets.join(', ') || 'yok'}. Hedef, satır Trakt\'tan ÇEKİLİRKEN belirlenir; buradaki kutular yalnızca filtredir.`);
+    } else if (droppedByTarget) {
+      reasons.push(`${droppedByTarget} satır hedef filtresinde elendi (depoda → ${fmtCounts(targetsInStore)} · seçili → ${onTargets.join(', ')}).`);
+    }
+    if (droppedByType) {
+      reasons.push(`${droppedByType} satır TÜR filtresinde elendi: depodaki türler → ${fmtCounts(typesInStore)} · seçili türler → ${onTypes.join(', ') || 'yok'}. Depoda olmayan bir türü işaretlemek hiçbir şey kazandırmaz; depodakileri işaretlemen gerekir.`);
+    }
+    if (all.length && !onTypes.length) {
+      reasons.push('Hiçbir tür kutusu işaretli değil (film / dizi gövdesi / bölüm).');
+    }
+    if (droppedNoRating) {
+      reasons.push(`${droppedNoRating} satır puansız olduğu için "puan" hedefine yazılamaz (Trakt\'tan puanları ayrıca çekmelisin).`);
+    }
+    if (droppedNoList) {
+      reasons.push(listMode === 'existing'
+        ? `${droppedNoList} liste satırı yazılamaz: "mevcut liste" modundasın ama geçerli bir ls… kimliği girilmedi. Ya ls… yaz (ör. ls596645010) ya da "tek yeni liste" / "Trakt listesi başına yeni liste" modunu seç.`
+        : `${droppedNoList} liste satırı yazılamaz (liste modu: ${listMode}).`);
+    }
+    if (rawListId && !listId) {
+      reasons.push(`ls… alanındaki değer geçerli bir liste kimliği değil: "${rawListId}" (biçim: ls + 6-12 rakam, ör. ls596645010).`);
+    }
+    if (emptyTargets.length) {
+      reasons.push(`Seçili ama depoda hiç satırı olmayan hedefler → ${emptyTargets.join(', ')}. Bunları Trakt sekmesindeki ilgili düğmeyle çekmelisin (watchlist → "Watchlist → depoya", izlendi → "İzlenenler → Çek").`);
+    }
+
+    return {
+      total: all.length,
+      afterTarget: afterTarget.length,
+      afterType: afterType.length,
+      usable: usable.length,
+      droppedByTarget,
+      droppedByType,
+      droppedNoRating,
+      droppedNoList,
+      typesInStore,
+      targetsInStore,
+      emptyTargets,
+      droppedTypes,
+      reasons,
+      byTarget: countByTarget(usable),
+      byType: countByType(usable),
+      listId,
+      listMode,
+      listReady,
+    };
+  }
+
+  // Depodaki türlere bakarak hangi tür kutularının işaretlenmesi gerektiğini söyler.
+  function suggestTypes(rows) {
+    const counts = countByType(rows || []);
+    const out = {};
+    for (const t of TYPES.concat(['unknown'])) out[t] = Boolean(counts[t]);
+    // IMDb sezon ve kişi yazamaz: depoda olsalar bile önerilmez.
+    out.season = false;
+    out.person = false;
+    return out;
   }
 
   // ---------- IMDb GraphQL gövdeleri ----------
@@ -1037,10 +1152,11 @@
   function buildQueue() {
     const byTarget = applyTargetFilter(state.rows, state.cfg.targets);
     const byType = applyTypeFilter(byTarget, state.cfg.types);
-    // Puan hedefi puansız satırları yazamaz.
+    // queueDiagnostics ile birebir aynı kurallar: ls… geçerli mi, puan var mı?
+    const listReady = Boolean(parseImdbListId(state.cfg.listId)) || state.cfg.listMode !== 'existing';
     const usable = byType.filter((r) => {
       if (r.target === 'rating') return Number.isFinite(r.rating) && r.rating > 0;
-      if (r.target === 'list') return Boolean(state.cfg.listId) || state.cfg.listMode !== 'existing';
+      if (r.target === 'list') return listReady;
       return true;
     });
     return usable.map((r) => ({
@@ -1677,6 +1793,7 @@
     const oneTarget = h('select', {}, TARGETS.map((t) => h('option', { value: t, text: t })));
     const captureBox = h('pre', { class: 'log', style: { height: '90px' }, text: '(yakalama kapalı)' });
     const queueLine = h('div', { class: 'muted', text: 'Sıra: —' });
+    const listHint = h('div', { class: 'muted', text: '' });
 
     const targetBoxes = {};
     const typeBoxes = {};
@@ -1696,49 +1813,101 @@
 
     // Kutu seçimlerine göre sıra özeti (ayarı kaydetmeden, günlük basmadan).
     // buildQueue ile aynı kuralları uygular ki iki sayı birbirini tutsun.
-    function queueSummaryText() {
+    // Arayüzdeki güncel seçimleri toplayıp teşhizi üretir (tek doğruluk kaynağı).
+    function currentDiag() {
       const tg = {};
-      TARGETS.forEach((t) => { tg[t] = targetBoxes[t] && targetBoxes[t].checked; });
+      TARGETS.forEach((t) => { tg[t] = Boolean(targetBoxes[t] && targetBoxes[t].checked); });
       const ty = {};
-      Object.keys(typeBoxes).forEach((t) => { ty[t] = typeBoxes[t].checked; });
-      const rows = applyTypeFilter(applyTargetFilter(state.rows || [], tg), ty);
+      Object.keys(typeBoxes).forEach((t) => { ty[t] = Boolean(typeBoxes[t].checked); });
+      const modeEl = refs.body.querySelector('input[name=listmode]:checked');
+      return queueDiagnostics(state.rows || [], {
+        targets: tg,
+        types: ty,
+        listId: listIdInput.value,
+        listMode: modeEl ? modeEl.value : state.cfg.listMode,
+      });
+    }
+
+    function queueSummaryText() {
+      const d = currentDiag();
+      const parts = Object.entries(d.byTarget).map(([k, v]) => `${k}: ${v}`).join(' · ') || '—';
+      let text = `Sıra: ${d.usable} öğe (${parts})`;
+      if (d.usable < d.total) {
+        const drops = [];
+        if (d.droppedByTarget) drops.push(`hedef: -${d.droppedByTarget}`);
+        if (d.droppedByType) drops.push(`tür: -${d.droppedByType}`);
+        if (d.droppedNoRating) drops.push(`puansız: -${d.droppedNoRating}`);
+        if (d.droppedNoList) drops.push(`ls… yok: -${d.droppedNoList}`);
+        text += ` · depoda ${d.total} satır, elenenler → ${drops.join(', ')}`;
+      }
+      return text;
+    }
+
+    // ls… alanının yanındaki canlı doğrulama satırı.
+    function refreshListHint() {
       const modeEl = refs.body.querySelector('input[name=listmode]:checked');
       const mode = modeEl ? modeEl.value : state.cfg.listMode;
-      const listReady = Boolean(parseImdbListId(listIdInput.value)) || mode !== 'existing';
-      let noRating = 0;
-      let noList = 0;
-      const usable = rows.filter((r) => {
-        if (r.target === 'rating') {
-          if (Number.isFinite(r.rating) && r.rating > 0) return true;
-          noRating += 1;
-          return false;
-        }
-        if (r.target === 'list') {
-          if (listReady) return true;
-          noList += 1;
-          return false;
-        }
-        return true;
-      });
-      const byTarget = countByTarget(usable);
-      const parts = Object.entries(byTarget).map(([k, v]) => `${k}: ${v}`).join(' · ') || '—';
-      const notes = [];
-      if (noRating) notes.push(`${noRating} satır puansız`);
-      if (noList) notes.push(`${noList} satır için liste kimliği (ls…) yok`);
-      return `Sıra: ${usable.length} öğe (${parts})` + (notes.length ? ` · yazılamayacak: ${notes.join(', ')}` : '');
+      if (!listHint) return;
+      if (mode !== 'existing') {
+        listHint.textContent = mode === 'per-source'
+          ? 'Mod: her Trakt listesi için IMDb\'de yeni bir liste oluşturulur (ls… gerekmez).'
+          : 'Mod: verilen adla tek bir yeni IMDb listesi oluşturulur (ls… gerekmez).';
+        listHint.className = 'muted';
+        return;
+      }
+      const id = parseImdbListId(listIdInput.value);
+      if (id) {
+        listHint.textContent = `Liste kimliği geçerli: ${id}`;
+        listHint.className = 'ok';
+      } else if (!listIdInput.value.trim()) {
+        listHint.textContent = 'ls… alanı boş: liste sayfasını açıp "Bu sayfadaki ls kimliğini al" de ya da kimliği yapıştır. Boş kalırsa hiçbir liste satırı yazılamaz.';
+        listHint.className = 'bad';
+      } else {
+        listHint.textContent = `Geçersiz: "${listIdInput.value.trim()}" — biçim ls + 6-12 rakam (ör. ls596645010).`;
+        listHint.className = 'bad';
+      }
     }
 
     function queuePreview() {
       readCfgFromUi();
-      const q = buildQueue();
-      const byTarget = countByTarget(q);
-      const byType = countByType(q);
-      log(`Sıra önizleme: ${q.length} öğe · hedef → ${Object.entries(byTarget).map(([k, v]) => `${k}:${v}`).join(', ') || '—'} · tür → ${Object.entries(byType).map(([k, v]) => `${k}:${v}`).join(', ') || '—'}`);
-      const w = overlapWarning(q);
+      const d = currentDiag();
+      const parts = Object.entries(d.byTarget).map(([k, v]) => `${k}:${v}`).join(', ') || '—';
+      const typeParts = Object.entries(d.byType).map(([k, v]) => `${k}:${v}`).join(', ') || '—';
+      log(`Sıra önizleme: ${d.usable} öğe · hedef → ${parts} · tür → ${typeParts}`);
+      log(`Süzgeç adımları: depoda ${d.total} satır → hedef filtresi sonrası ${d.afterTarget} → tür filtresi sonrası ${d.afterType} → yazılabilir ${d.usable}`);
+      log(`Depodaki dağılım: hedef → ${fmtCounts(d.targetsInStore)} · tür → ${fmtCounts(d.typesInStore)}`);
+      if (d.usable === 0) {
+        if (d.reasons.length) d.reasons.forEach((r) => log(`SEBEP: ${r}`));
+        else log('SEBEP: bulunamadı — depo ve seçimleri "Depoyu temizle" sonrası yeniden dene.');
+        log('İpucu: "Depoya göre türleri seç" düğmesi, depoda gerçekten hangi türler varsa kutuları ona göre ayarlar.');
+      } else {
+        d.reasons.forEach((r) => log(`Not: ${r}`));
+      }
+      const w = overlapWarning(buildQueue());
       if (w) log(w);
-      capWarnings(q).forEach((x) => log(x));
+      capWarnings(buildQueue()).forEach((x) => log(x));
       if (state.cfg.dryRun) log('Kuru çalıştırma AÇIK: hiçbir şey yazılmaz.');
       refs.refreshStore();
+    }
+
+    function applyTypePreset(mode) {
+      const counts = countByType(state.rows || []);
+      if (mode === 'auto') {
+        const s = suggestTypes(state.rows || []);
+        Object.keys(typeBoxes).forEach((t) => { typeBoxes[t].checked = Boolean(s[t]); });
+        log(`Türler depoya göre ayarlandı → ${fmtCounts(counts)} (sezon/kişi IMDb\'ye yazılamadığı için kapalı bırakıldı).`);
+      } else if (mode === 'body') {
+        Object.keys(typeBoxes).forEach((t) => { typeBoxes[t].checked = (t === 'movie' || t === 'show'); });
+        log('Tür ön ayarı: film + dizi gövdesi.');
+      } else if (mode === 'episodes') {
+        Object.keys(typeBoxes).forEach((t) => { typeBoxes[t].checked = (t === 'episode'); });
+        log('Tür ön ayarı: yalnız bölümler. Not: depoda bölüm satırı yoksa sıra 0 olur — bölümleri Trakt ZIP\'inden (watched-history-*.json) yüklemen gerekir.');
+      } else if (mode === 'all-writable') {
+        Object.keys(typeBoxes).forEach((t) => { typeBoxes[t].checked = (t !== 'season' && t !== 'person'); });
+        log('Tür ön ayarı: yazılabilen her tür (film, dizi gövdesi, bölüm).');
+      }
+      queueLine.textContent = queueSummaryText();
+      refreshListHint();
     }
 
     const box = h('div');
@@ -1780,6 +1949,13 @@
         h('label', {}, [typeBoxes.season, 'sezon (IMDb desteklemez)']),
         h('label', {}, [typeBoxes.person, 'kişi (nm, yazılamaz)']),
       ]),
+      h('div', { class: 'muted', text: 'Tür ön ayarları (depodaki satırlara bakar):' }),
+      h('div', { class: 'row' }, [
+        h('button', { class: 'sec', text: 'Depoya göre türleri seç', onClick: () => applyTypePreset('auto') }),
+        h('button', { class: 'sec', text: 'Film + dizi gövdesi', onClick: () => applyTypePreset('body') }),
+        h('button', { class: 'sec', text: 'Yalnız bölümler', onClick: () => applyTypePreset('episodes') }),
+        h('button', { class: 'sec', text: 'Yazılabilen her tür', onClick: () => applyTypePreset('all-writable') }),
+      ]),
       h('div', { class: 'row' }, [h('button', { class: 'sec', text: 'Sırayı önizle', onClick: queuePreview })]),
       queueLine,
       h('div', { class: 'muted', text: 'Puan hedefi: IMDb\'de puan vermek öğeyi otomatik "izlendi" yapar, tarih ise bugünün tarihi olur (IMDb geriye tarih yazdırmaz).' }),
@@ -1793,6 +1969,7 @@
         h('label', {}, [h('input', { type: 'radio', name: 'listmode', value: 'per-source', checked: state.cfg.listMode === 'per-source' }), 'Trakt listesi başına yeni liste']),
       ]),
       h('div', { class: 'row' }, [h('span', { text: 'ls…:' }), listIdInput, h('span', { text: 'yeni liste adı:' }), listNameInput, visSel]),
+      listHint,
       h('div', { class: 'row' }, [
         h('button', { class: 'sec', text: 'Yeni listeyi şimdi oluştur', onClick: async () => {
           readCfgFromUi();
@@ -1887,10 +2064,11 @@
     };
     TARGETS.forEach((t) => targetBoxes[t].addEventListener('change', () => { queueLine.textContent = queueSummaryText(); }));
     Object.keys(typeBoxes).forEach((t) => typeBoxes[t].addEventListener('change', () => { queueLine.textContent = queueSummaryText(); }));
-    listIdInput.addEventListener('input', () => { queueLine.textContent = queueSummaryText(); });
+    listIdInput.addEventListener('input', () => { queueLine.textContent = queueSummaryText(); refreshListHint(); });
     Array.prototype.forEach.call(refs.body.querySelectorAll('input[name=listmode]'), (r) => {
-      r.addEventListener('change', () => { queueLine.textContent = queueSummaryText(); });
+      r.addEventListener('change', () => { queueLine.textContent = queueSummaryText(); refreshListHint(); });
     });
+    refreshListHint();
 
     imdb.whoami().then((r) => {
       sess.textContent = r.loggedIn ? '✓ IMDb oturumu açık.' : `✗ IMDb oturumu kapalı görünüyor (HTTP ${r.status}).`;
@@ -1976,6 +2154,7 @@
     normalizeTraktRecord, normalizeTraktRecords, normalizeTraktLists, ratingClamp,
     rowKey, mergeRows, applyTargetFilter, applyTypeFilter, countByType, countByTarget,
     overlapWarning, groupBySource, capWarnings, sanitizeListName, parseImdbListId,
+    fmtCounts, queueDiagnostics, suggestTypes,
     imdbGraphqlBody, createListVariables, addItemVariables, rateVariables, watchedVariables,
     imdbGraphqlHeaders, watchlistUrl, writeOriginWarning, gqlErrorMessage, looksLikeAuthError,
     looksLikeDuplicate, classifyHttpStatus, backoffFor, formatEta, pad2, isTtId, isNmId, typeFromToken,

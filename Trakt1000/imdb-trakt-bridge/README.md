@@ -7,10 +7,10 @@ sürümüdür: hedef tek değil, **dört** tanedir.
 | | |
 |---|---|
 | Dosya | `imdb-trakt-bridge.user.js` (tek dosya, bağımlılık yok, ~1.865 satır) |
-| Sürüm | 0.1.1 |
+| Sürüm | 0.1.2 |
 | Çalıştığı yerler | `https://app.trakt.tv/*` **ve** `https://www.imdb.com/*` |
 | Gereken izinler | `GM_setValue/GM_getValue/GM_deleteValue`, `GM_xmlhttpRequest`, `unsafeWindow` |
-| Test | `npm test` → **38/38 geçiyor** · `npm run check` → sözdizimi tamam |
+| Test | `npm test` → **48/48 geçiyor** · `npm run check` → sözdizimi tamam |
 | Lisans | MIT |
 
 > **Doğrulama durumu:** uç noktalar ve mutation gövdeleri kaynak koddan okunarak
@@ -150,10 +150,14 @@ kaydeder; JSON olarak indirebilirsin. Bu, betikteki gövdeleri güncellemenin yo
 3. `www.imdb.com` → panel → **0 · Depo**'da satır sayısını gör (gelmediyse **Yenile**;
    yine yoksa Trakt sekmesinde **JSON indir** → burada **JSON/CSV yükle**).
 4. **1 · Durum**: `✓ IMDb oturumu açık` mı? Kırmızıysa önce giriş yap.
-5. **2 · Hedefler**: hangi hedeflere yazacaksan işaretle; türlerde **sezon** ve **kişi**
-   kapalı kalsın (IMDb kabul etmez). **Sırayı önizle** → uyarıları oku.
+5. **2 · Hedefler**: hangi hedeflere yazacaksan işaretle. **Unutma: hedef, satır Trakt'tan
+   çekilirken belirlenir** — depoda `list` satırları varken yalnız `izlendi` işaretlersen
+   sıra 0 olur. Tür kutuları için en kolayı **Depoya göre türleri seç** düğmesi (sezon/kişi
+   zaten hep kapalı kalır). Sonra **Sırayı önizle** → süzgeç adımlarını ve `SEBEP:`
+   satırlarını oku.
 6. **3 · Liste hedefi**: mevcut `ls…` gir (bir liste sayfasındayken **Bu sayfadaki ls
-   kimliğini al**) ya da "tek yeni liste" / "Trakt listesi başına yeni liste" seç.
+   kimliğini al**) ya da "tek yeni liste" / "Trakt listesi başına yeni liste" seç. Alanın
+   altındaki satır yeşilse kimlik geçerlidir.
 7. **4 · Çalıştır**: kuru çalıştırma **açıkken** Başlat → günlüğü oku (hiçbir şey yazmaz).
    Sonra **tek deneme**: bir `tt…` + hedef seç, kuru çalıştırmayı kapat, **Dene**.
    Başarılıysa kuru çalıştırmayı kapalı bırakıp **Başlat**.
@@ -229,7 +233,7 @@ birinde aç (ikisi de `fetch`/XHR'ı sarar).
 ```bash
 cd Trakt1000/imdb-trakt-bridge
 npm run check     # node --check
-npm test          # node --test tests/bridge.test.mjs  → 38 test
+npm test          # node --test tests/bridge.test.mjs  → 48 test
 ```
 
 Testler betiğin `/* __PURE_START__ */ … /* __PURE_END__ */` arasındaki saf çekirdeğini
@@ -265,7 +269,7 @@ ekranın köşesinde görünmüyordu. **v0.1.1'de düzeltildi:**
 
 Hâlâ görmüyorsan sırayla bak:
 
-1. **Sürüm:** Tampermonkey listesinde `0.1.1` yazıyor mu? Eski sürüm kaldıysa güncelle.
+1. **Sürüm:** Tampermonkey listesinde `0.1.2` yazıyor mu? Eski sürüm kaldıysa güncelle.
 2. **Alan adı:** Betik `https://*.imdb.com/*` ve `https://app.trakt.tv/*` / `https://trakt.tv/*`
    üzerinde çalışır. `imdb.de` gibi bir yerel alan adındaysan çalışmaz — `www.imdb.com`'a geç.
 3. **Konsoldan aç:** `ImdbTraktBridge.openPanel()` (veya `ImdbTraktBridge.togglePanel(true)`).
@@ -290,9 +294,31 @@ süresi dolmuşsa panel "DOLMUŞ" uyarısı verir — yenileme yine oturumla olu
 
 ### Sıra 0 öğe gösteriyor
 
-Depo dolu ama sıra boşsa: **2 · Hedefler**'de hiçbir hedef kutusu işaretli değildir, ya
-da tür filtreleri kapalıdır (sezon/kişi varsayılan kapalı), ya da puan hedefi seçili
-olduğu hâlde satırlarda puan yoktur. Sıra satırı yazılamayanları gerekçesiyle sayar.
+v0.1.2'den itibaren **Sırayı önizle** yalnız sayı vermez, süzgecin her adımını ve
+**SEBEP** satırlarını günlüğe yazar:
+
+```
+Sıra önizleme: 0 öğe · hedef → — · tür → —
+Süzgeç adımları: depoda 7 satır → hedef filtresi sonrası 7 → tür filtresi sonrası 0 → yazılabilir 0
+Depodaki dağılım: hedef → list: 7 · tür → show: 7
+SEBEP: 7 satır TÜR filtresinde elendi: depodaki türler → show: 7 · seçili türler → episode. …
+SEBEP: Seçili ama depoda hiç satırı olmayan hedefler → watchlist, watched. …
+```
+
+En sık üç neden:
+
+| Belirti | Sebep | Çözüm |
+|---|---|---|
+| `tür filtresinde elendi` | Depodaki türlerle işaretlediğin tür kutuları uyuşmuyor (ör. depoda `show` var, sen yalnız `bölüm` işaretlemişsin) | **Depoya göre türleri seç** düğmesi |
+| `ls… kimliği girilmedi` | "mevcut liste" modundasın ama `ls…` alanı boş/geçersiz | Liste sayfasını aç → **Bu sayfadaki ls kimliğini al**, ya da "tek yeni liste" / "Trakt listesi başına yeni liste" moduna geç |
+| `depoda hiç satırı olmayan hedefler` | Hedef kutusu işaretli ama o hedefte satır yok — **hedef, satır Trakt'tan çekilirken belirlenir**, buradaki kutular yalnız filtredir | Trakt sekmesinde ilgili düğmeyle çek (watchlist → "Watchlist → depoya", izlendi → "İzlenenler → Çek") |
+
+**Tür ön ayarları** (2. bölüm): *Depoya göre türleri seç* (depoda hangi türler varsa onu
+işaretler; sezon/kişi hep kapalı kalır çünkü IMDb bunları kabul etmez), *Film + dizi
+gövdesi*, *Yalnız bölümler*, *Yazılabilen her tür*.
+
+**ls… alanının altında canlı doğrulama satırı** var: yeşil `Liste kimliği geçerli: ls…`,
+kırmızı `ls… alanı boş…` ya da `Geçersiz: "abc123" — biçim ls + 6-12 rakam`.
 
 ### Depo, Trakt sekmesinde çektiğim satırları göstermiyor
 

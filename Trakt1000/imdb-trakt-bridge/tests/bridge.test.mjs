@@ -26,6 +26,7 @@ const pure = new Function(`${pureCode}
     normalizeTraktRecord, normalizeTraktRecords, normalizeTraktLists, ratingClamp,
     rowKey, mergeRows, applyTargetFilter, applyTypeFilter, countByType, countByTarget,
     overlapWarning, groupBySource, capWarnings, sanitizeListName, parseImdbListId,
+    fmtCounts, queueDiagnostics, suggestTypes,
     imdbGraphqlBody, createListVariables, addItemVariables, rateVariables, watchedVariables,
     imdbGraphqlHeaders, watchlistUrl, writeOriginWarning, IMDB_HOST,
     gqlErrorMessage, looksLikeAuthError, looksLikeDuplicate,
@@ -450,4 +451,133 @@ test('writeOriginWarning: bozuk/boş adres patlamaz (tabana çözümlenir)', () 
   // Geçersiz bir değer de istisna fırlatmamalı: ya null ya açıklama döner.
   const r = pure.writeOriginWarning(undefined);
   assert.ok(r === null || typeof r === 'string');
+});
+
+// ---------- 8. Sıra teşhisi (kullanicinin bildirdigi "0 oge" durumu) ----------
+
+// Bildirilen gerçek durum: depoda 7 satır, hepsi hedef=list ve tür=show;
+// hedeflerde liste+watchlist+izlendi işaretli, türlerde YALNIZ bölüm işaretli.
+const sevenShows = Array.from({ length: 7 }, (_, i) => ({
+  const: `tt100000${i}`, type: 'show', target: 'list', label: `Dizi ${i}`,
+  rating: null, date: null, source: 'Bittiler',
+}));
+
+test('fmtCounts: sayım nesnesini okunur metne çevirir', () => {
+  assert.equal(pure.fmtCounts({ show: 7 }), 'show: 7');
+  assert.equal(pure.fmtCounts({ movie: 3, episode: 828 }), 'movie: 3, episode: 828');
+  assert.equal(pure.fmtCounts({}), 'yok');
+  assert.equal(pure.fmtCounts(null), 'yok');
+});
+
+test('queueDiagnostics: tür filtresi uyuşmayınca 0 öğe ve SEBEP üretir', () => {
+  const d = pure.queueDiagnostics(sevenShows, {
+    targets: { list: true, watchlist: true, watched: true, rating: false },
+    types: { movie: false, show: false, episode: true, season: false, person: false },
+    listId: 'ls596645010',
+    listMode: 'existing',
+  });
+  assert.equal(d.total, 7);
+  assert.equal(d.afterTarget, 7);
+  assert.equal(d.afterType, 0);
+  assert.equal(d.usable, 0);
+  assert.equal(d.droppedByType, 7);
+  assert.deepEqual(d.typesInStore, { show: 7 });
+  assert.deepEqual(d.droppedTypes, ['show']);
+  assert.deepEqual(d.emptyTargets, ['watchlist', 'watched']);
+  const text = d.reasons.join(' ');
+  assert.match(text, /TÜR filtresinde elendi/);
+  assert.match(text, /show: 7/);
+  assert.match(text, /epizot|episode/);
+  assert.match(text, /depoda hiç satırı olmayan hedefler/i);
+});
+
+test('queueDiagnostics: ls… boşken liste satırları yazılamaz ve sebebi söylenir', () => {
+  const d = pure.queueDiagnostics(sevenShows, {
+    targets: { list: true }, types: { show: true }, listId: '', listMode: 'existing',
+  });
+  assert.equal(d.afterType, 7);
+  assert.equal(d.usable, 0);
+  assert.equal(d.droppedNoList, 7);
+  assert.equal(d.listReady, false);
+  assert.equal(d.listId, null);
+  assert.match(d.reasons.join(' '), /geçerli bir ls… kimliği girilmedi/);
+});
+
+test('queueDiagnostics: geçerli ls… + doğru tür → 7 öğe yazılabilir', () => {
+  const d = pure.queueDiagnostics(sevenShows, {
+    targets: { list: true }, types: { show: true }, listId: 'ls596645010', listMode: 'existing',
+  });
+  assert.equal(d.usable, 7);
+  assert.equal(d.listReady, true);
+  assert.equal(d.listId, 'ls596645010');
+  assert.deepEqual(d.byTarget, { list: 7 });
+  assert.deepEqual(d.byType, { show: 7 });
+  assert.deepEqual(d.reasons, []);
+});
+
+test('queueDiagnostics: bozuk ls… değeri hem listReady=false hem ayrı uyarı verir', () => {
+  const d = pure.queueDiagnostics(sevenShows, {
+    targets: { list: true }, types: { show: true }, listId: 'abc123', listMode: 'existing',
+  });
+  assert.equal(d.listReady, false);
+  assert.equal(d.usable, 0);
+  assert.match(d.reasons.join(' '), /geçerli bir liste kimliği değil/);
+});
+
+test('queueDiagnostics: yeni liste modlarında ls… gerekmez', () => {
+  for (const mode of ['create-one', 'per-source']) {
+    const d = pure.queueDiagnostics(sevenShows, {
+      targets: { list: true }, types: { show: true }, listId: '', listMode: mode,
+    });
+    assert.equal(d.listReady, true, mode);
+    assert.equal(d.usable, 7, mode);
+  }
+});
+
+test('queueDiagnostics: puansız satırlar puan hedefine yazılamaz', () => {
+  const rows = [
+    { const: 'tt1', type: 'movie', target: 'rating', rating: 8 },
+    { const: 'tt2', type: 'movie', target: 'rating', rating: null },
+    { const: 'tt3', type: 'movie', target: 'watched', rating: null },
+  ];
+  const d = pure.queueDiagnostics(rows, {
+    targets: { rating: true, watched: true }, types: { movie: true }, listMode: 'create-one',
+  });
+  assert.equal(d.usable, 2);
+  assert.equal(d.droppedNoRating, 1);
+  assert.match(d.reasons.join(' '), /puansız olduğu için/);
+});
+
+test('queueDiagnostics: boş depo ve işaretsiz kutular için ayrı sebep', () => {
+  assert.match(pure.queueDiagnostics([], { targets: { list: true }, types: { show: true } }).reasons.join(' '), /Depoda hiç satır yok/);
+  const noTarget = pure.queueDiagnostics(sevenShows, { targets: {}, types: { show: true } });
+  assert.equal(noTarget.usable, 0);
+  assert.match(noTarget.reasons.join(' '), /Hiçbir hedef kutusu işaretli değil/);
+  const noType = pure.queueDiagnostics(sevenShows, { targets: { list: true }, types: {}, listId: 'ls596645010' });
+  assert.equal(noType.usable, 0);
+  assert.equal(noType.droppedByType, 7);
+  assert.match(noType.reasons.join(' '), /Hiçbir tür kutusu işaretli değil/);
+});
+
+test('queueDiagnostics: gövde+bölüm birlikteyse overlapWarning ayrıca çalışır', () => {
+  const rows = sevenShows.concat([{ const: 'tt9', type: 'episode', target: 'list', source: 'Bittiler' }]);
+  const d = pure.queueDiagnostics(rows, {
+    targets: { list: true }, types: { show: true, episode: true }, listId: 'ls596645010',
+  });
+  assert.equal(d.usable, 8);
+  assert.match(pure.overlapWarning(rows), /gövde/);
+});
+
+test('suggestTypes: depoda olan türleri önerir, sezon/kişi hep kapalı', () => {
+  const rows = [
+    { type: 'show', target: 'list' }, { type: 'episode', target: 'watched' },
+    { type: 'season', target: 'list' }, { type: 'person', target: 'list' },
+  ];
+  const s = pure.suggestTypes(rows);
+  assert.equal(s.show, true);
+  assert.equal(s.episode, true);
+  assert.equal(s.movie, false);
+  assert.equal(s.season, false, 'sezon IMDb\'ye yazılamaz');
+  assert.equal(s.person, false, 'kişi (nm) IMDb listesine yazılamaz');
+  assert.deepEqual(pure.suggestTypes([]), { movie: false, show: false, episode: false, season: false, person: false, unknown: false });
 });
