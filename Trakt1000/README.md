@@ -11,7 +11,8 @@ Bu klasör ana depodaki `image-scraper` projesinden bağımsızdır.
 | Sorun | 18 liste var; toplam öğe sınırı 1.000 olduğu için listelere yeni öğe **eklenemiyor** |
 | Doküman | `imdb-tasima-rehberi.md` — Trakt → IMDb taşıma adımları, antoloji tuzağı, Watched sınırları |
 | Betik (IMDb tarafı) | **Yazıldı:** `imdb-watched-marker/` — Trakt geçmişini IMDb "Watched"a puansız/check-in'siz toplu çevirir |
-| Betik (Trakt tarafı) | **Yazılmadı** — Trakt listelerine/akıllı listelere dokunan bir betik talebi yok |
+| Betik (iki yön köprüsü) | **Yazıldı:** `imdb-trakt-bridge/` — Trakt'tan **canlı** okur (kendi oturumun, bağlı uygulama slotu harcamaz), IMDb'ye liste/watchlist/izlendi/puan yazar |
+| Betik (Trakt tarafı) | **Yazılmadı** — Trakt listelerine *yazan* bir betik gereksiz: IMDb → Trakt yönünü Trakt'ın kendi içe aktarıcısı tarih koruyarak yapıyor |
 | Dal | `arena/6834ba5b-tampermonkey` — `main`'e **merge edilmedi** |
 
 ## Klasör içeriği
@@ -23,6 +24,9 @@ Bu klasör ana depodaki `image-scraper` projesinden bağımsızdır.
 | `imdb-watched-marker/README.md` | Kurulum, kullanım, yakalama modu, sorun giderme, risk notları |
 | `imdb-watched-marker/tests/parse.test.mjs` | 22 test (`node --test`) — ayrıştırıcı, filtreler, hazır filtre ön ayarları, CSV/hata yardımcıları |
 | `imdb-userscript-onerileri.md` | Greasy Fork taraması (16 Kasım 2026): işe yarayan IMDb betikleri, tamamlayıcılar, tuzaklar ve minimum set |
+| `imdb-trakt-bridge/imdb-trakt-bridge.user.js` | İki sayfalı userscript: `app.trakt.tv`'de canlı okuma + `imdb.com`'da dört hedefe yazma |
+| `imdb-trakt-bridge/README.md` | Akış şeması, uç tablosu, doğrulama kaynakları, sınırlar, marker ile karşılaştırma |
+| `imdb-trakt-bridge/tests/bridge.test.mjs` | 36 test (`node --test`) — token çıkarma, Trakt yolları/kapasite, kayıt→satır dönüşümü, GraphQL gövdeleri, CSV |
 
 ## Bulgular (doğrulanmış)
 
@@ -54,6 +58,31 @@ Bu klasör ana depodaki `image-scraper` projesinden bağımsızdır.
   çağırıyor; aynı mutation'ı kullanan yayında, MIT lisanslı bir betik daha var
   (`Juwan-Hwang/douban2imdb`, Greasy Fork #596763). Resmî olmayan iç API → imza
   değişebilir, bu yüzden betikte **yakalama modu** var.
+- **IMDb'ye "uygulama bağlanamaz":** IMDb'nin kullanıcı verisi için OAuth'u/API'si yok
+  (resmî API yalnız B2B title/name metadata; Login with Amazon yalnız profil verisi verir;
+  Amazon Data Portability'de IMDb ratings kapsamı yok; IMDb'de Trakt'taki gibi bir
+  *connected apps* kavramı hiç yok). Tek yazma yolu `imdb.com` origin'inden, senin
+  oturumunla `api.graphql.imdb.com` + `www.imdb.com` REST uçlarıdır.
+- **Watchlist GraphQL değil, düz REST:** `PUT https://www.imdb.com/watchlist/tt…`
+  (`Letterboxd-to-IMDb` · `add_to_imdb_watchlist`). Çıkarma (`DELETE`) hiçbir kaynakta
+  doğrulanmadı.
+- Liste/puan mutation gövdeleri kaynak koddan doğrulandı:
+  `createList(input:{name,listDescription,allowDuplicates:false,listType:"TITLES",visibility:"PRIVATE"}) { listId }`,
+  `addItemToList(input:{listId,item:{itemElementId}}) { listId }`,
+  `rateTitle(input:{rating,titleId}) { rating{value} }`.
+- **IMDb → Trakt yönü resmî ve tarih koruyor:** Trakt'ın kendi içe aktarıcısı
+  (`trakt/trakt-web` · `settings/import`) kaynak olarak `imdb | letterboxd | tvtime |
+  trakt-json | trakt-csv`, eylem olarak `history | watchlist | ratings | list | favorites`
+  destekliyor. `ImdbParser.ts` puan satırından **hem** `ratings` (rating + `rated_at`)
+  **hem** `history` (`watched_at = Date Rated`) üretiyor; `tvepisode → episode`
+  eşlemesi ve `EpisodeMatchMode: 'id' | 'positional'` var. Yani IMDb'de tarih yazılamazken
+  bu yönde tarihler korunuyor.
+- Aynı parser'ın sınırı: IMDb CSV'lerinden yalnız **ratings** (`Your Rating` kolonu varsa)
+  ve **watchlist** biçimini tanıyor → **IMDb özel listeleri ve check-ins içe aktarılamıyor**.
+- `GET /users/me/usage` kovası `{current, free, vip}` üçlüsüyle dönüyor
+  (`requests/models/UserLimits.ts` · `LimitsSchema`), kovalar: `history, ratings,
+  watchlist_items, total_list_items, static_lists, dynamic_lists, digital_library,
+  total_notes, connected_apps`.
 
 ## Olası sonraki adımlar (henüz yapılmadı)
 
@@ -61,3 +90,8 @@ Bu klasör ana depodaki `image-scraper` projesinden bağımsızdır.
 2. Yerel taşma (gölge) listeleri: sınırı aşan öğeler tarayıcıda tutulur, arayüze enjekte
    edilir, yer açılınca sunucuya yükseltilir.
 3. Taşıma: IMDb / MDBList / Plex / Simkl / Letterboxd dışa aktarma üreticileri.
+   **Kısmen yapıldı:** `imdb-trakt-bridge/` IMDb'ye canlı yazıyor (liste, watchlist,
+   izlendi, puan); MDBList/Plex/Simkl üreticileri hâlâ yok.
+4. Köprüde eksik kalanlar: watchlist'ten çıkarma (`DELETE` ucu doğrulanmadı), Trakt
+   `/sync/watched/episodes` davranışının gerçek hesapta sınanması, IMDb listelerinin
+   sunucu tarafında okunup yinelemelerin yazmadan önce elenmesi.

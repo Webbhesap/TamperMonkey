@@ -407,6 +407,66 @@ check-in'siz, 12.000 tavanına takılmaz — ama tarihi yine yazamaz).
 
 ---
 
+## 5d. Trakt ↔ IMDb canlı köprüsü (ZIP indirmeden)
+
+`imdb-watched-marker/` kaynak olarak dosya ister (Trakt ZIP'i, IMDb CSV'si, düz metin).
+Aynı işi **dosya indirmeden**, Trakt'taki kendi oturumunla canlı yapmak istersen bu
+depodaki ikinci betik var: **`imdb-trakt-bridge/`**.
+
+**"IMDb'yi uygulama olarak bağlayabilir miyiz?"** Hayır. IMDb'nin kullanıcı verisi için
+OAuth'u/API'si yok: resmî API yalnız B2B **title/name metadata** satıyor (AWS Data
+Exchange), Login with Amazon yalnız profil verisi (ad, e-posta) veriyor, Amazon Data
+Portability API'sinde IMDb ratings kapsamı yok ve IMDb'de Trakt'taki gibi bir
+**connected apps** kavramı hiç bulunmuyor. Yani Scout Mod'un yaptığı gibi tek yol var:
+`imdb.com` sayfasından, senin oturumunla IMDb'nin kendi iç uçlarını çağırmak.
+
+**Trakt tarafında ise bağlanmaya gerek yok.** `app.trakt.tv` OAuth token'ını
+`localStorage`'da tutuyor (`oidc.user:https://auth.trakt.tv:<client_id>`). Betik o
+token'ı okuyup `api.trakt.tv`'ye `Authorization: Bearer` + `trakt-api-version: 2` +
+`trakt-api-key` ile istiyor; böylece **ücretsiz hesabın tek "bağlı uygulama" slotu
+harcanmıyor** ve ZIP indirmek gerekmiyor.
+
+İki origin arasında veri taşınamadığı için betik iki sayfada çalışır:
+
+```
+app.trakt.tv  →  token'ı oku → /users/me/lists, /users/me/watchlist, /sync/watched,
+                               /sync/ratings, /users/me/usage  →  satırları GM deposuna
+www.imdb.com  →  satırları oku → hedef seç (liste / watchlist / izlendi / puan) →
+                 kuru çalıştır → tek deneme → toplu yaz
+```
+
+| Hedef | IMDb ucu | Durum |
+|---|---|---|
+| liste oluştur | `createList(input:{name,listDescription,allowDuplicates:false,listType:"TITLES",visibility:"PRIVATE"})` | kaynak koddan doğrulandı |
+| listeye öğe | `addItemToList(input:{listId,item:{itemElementId:"tt…"}})` | kaynak koddan doğrulandı |
+| puan | `rateTitle(input:{rating,titleId})` | kaynak koddan doğrulandı |
+| izlendi | `addWatchedTitle(titleId)` | kaynak koddan doğrulandı (§5c) |
+| watchlist | **REST:** `PUT https://www.imdb.com/watchlist/tt…` | kaynak koddan doğrulandı |
+| watchlist'ten çıkarma | `DELETE` aynı adres | **doğrulanmadı** — arayüzde düğmesi yok |
+
+Liste hedefi üç modda çalışır: mevcut `ls…` kimliği, tek yeni liste, ya da **Trakt
+listesi başına yeni IMDb listesi** (18 listeyi taşırken pratik). Yeni listeler
+`allowDuplicates:false` ile oluşur, yani yinelemeyi IMDb'nin kendisi reddeder.
+
+**Ters yön (IMDb → Trakt) için betik gerekmiyor:** Trakt'ın kendi içe aktarıcısı IMDb
+kaynağını resmî olarak destekliyor ve **tarihleri koruyor** — IMDb puan CSV'sindeki
+`Date Rated`, Trakt'ta hem `rated_at` hem `watched_at` oluyor. Sınır: Trakt'ın IMDb
+parser'ı yalnız **ratings** ve **watchlist** CSV biçimlerini tanıyor; IMDb **özel
+listeleri** ve **check-ins** içe aktarılamıyor. Adımlar: IMDb'de
+`imdb.com/list/ratings` → Export ve Watchlist → Export → `app.trakt.tv` →
+**Settings → Import** → kaynak **IMDb** → `history + ratings + watchlist` seç → yükle.
+Bölüm (`tvepisode`) satırları da destekleniyor; eşleştirme varsayılan olarak bölümün
+kendi kimliğiyle yapılıyor (`EpisodeMatchMode: 'id'`), kimlik yoksa dizi + sezon/bölüm
+numarasıyla (`'positional'`).
+
+**Kullanırken:** kuru çalıştırma varsayılan açık; gecikme 650 ms + 250 ms rastgele ek;
+429/5xx için 5-15-30 sn bekleme; art arda 5 hatada otomatik durma; sıra depoda tutulur,
+yarım kalırsa kaldığı yerden sürer. Betik `@grant GM_setValue/GM_xmlhttpRequest` ister
+(iki sayfa arasında veri taşımak ve CORS'u aşmak için). Ayrıntı:
+`imdb-trakt-bridge/README.md`.
+
+---
+
 ## 6. Trakt ↔ IMDb karşılaştırması (ne kazanır, ne kaybedersin)
 
 | | Trakt (ücretsiz, 2026) | IMDb |
@@ -492,7 +552,24 @@ sitenin "Tüm Özel Listeler Toplam İçerik 1.000 öğe" paneli bu veriyi göst
   `github.com/alp82/goodwatch-monorepo/blob/main/docs/research/imdb-ratings-import-deep-dive.md`
 - `addWatchedTitle` mutation'ını fiilen kullanan yayında, MIT lisanslı betik (kanıt):
   `github.com/Juwan-Hwang/douban2imdb` → `douban2imdb.user.js` (Greasy Fork #596763)
-- Bu depodaki betik: `Trakt1000/imdb-watched-marker/` (README + 19 test)
+- Liste/puan/watchlist uçlarının kanıtı (`createList`, `addItemToList`, `rateTitle` ve
+  **REST** `PUT /watchlist/{tt}`): `github.com/TobiasPankner/Letterboxd-to-IMDb` →
+  `letterboxd2imdb.py`
+- IMDb'ye "uygulama bağlanamaması"nın gerekçeleri (resmî API yalnız B2B metadata, Login
+  with Amazon yalnız profil, Data Portability'de IMDb ratings yok, connected apps kavramı
+  yok): `github.com/alp82/goodwatch-monorepo/blob/main/docs/research/…-deep-dive.md`
+- Ters yönün (IMDb → Trakt) resmî ve **tarih koruyan** yolu — Trakt'ın kendi içe
+  aktarıcısı: `github.com/trakt/trakt-web` →
+  `projects/client/src/lib/sections/settings/import/ImportTypes.ts` (kaynaklar: imdb,
+  letterboxd, tvtime, trakt-json, trakt-csv; eylemler: history, watchlist, ratings, list,
+  favorites; `EpisodeMatchMode: 'id' | 'positional'`) ve
+  `…/import/parsers/ImdbParser.ts` (puan satırından hem `ratings`+`rated_at` hem
+  `history`+`watched_at = Date Rated` üretir; yalnız ratings ve watchlist CSV'sini tanır)
+- Trakt kapasite uçlarının biçimi: `github.com/trakt/trakt-web` →
+  `…/requests/queries/vip/userLimitsQuery.ts` (`GET /v3/users/me/usage`) ve
+  `…/requests/models/UserLimits.ts` (`LimitsSchema = {current, free, vip}`)
+- Bu depodaki betikler: `Trakt1000/imdb-watched-marker/` (README + 22 test) ve
+  `Trakt1000/imdb-trakt-bridge/` (README + 36 test)
 - IMDb ürün yöneticisi yanıtı — "bölüm işaretlenebilir, sezon işaretlenemez", sezon toplu
   işaretleme ve yüzde göstergesi backlog'da:
   <https://community-imdb.sprinklr.com/conversations/imdbcom/imdb-introduces-watched-formerly-known-as-seen/67ea80e2dedd5e250dbb2bdb>

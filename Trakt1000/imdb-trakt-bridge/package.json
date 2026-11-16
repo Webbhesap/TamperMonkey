@@ -1,0 +1,12 @@
+{
+  "name": "imdb-trakt-bridge",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Trakt'tan canli okuyup IMDb'ye yazan userscript (liste / watchlist / izlendi / puan). Bagimlilik yok.",
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/bridge.test.mjs",
+    "check": "node --check imdb-trakt-bridge.user.js"
+  },
+  "license": "MIT"
+}
